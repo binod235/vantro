@@ -1,29 +1,9 @@
-# Dependencies
 node_modules/
-
-# Environment — NEVER commit real .env files
 .env
 .env.local
-.env.*.local
-
-# Build output
+.env*.local
 dist/
 .next/
 out/
-
-# Prisma generated client (prisma-client-js outputs to node_modules, nothing to ignore here)
-
-# Logs
 *.log
-npm-debug.log*
-
-# OS
 .DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-
-# Test coverage
-coverage/
