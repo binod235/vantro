@@ -1,0 +1,175 @@
+{
+  "_id": "vantro-enquiries",
+  "colName": "Vantro — Enquiries",
+  "created": "2026-05-27T00:00:00.000Z",
+  "sortNum": 7,
+  "folders": [
+    { "_id": "folder-enquiries", "name": "Enquiries", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "enquiry-create",
+      "colId": "vantro-enquiries",
+      "containerId": "folder-enquiries",
+      "name": "Create Enquiry",
+      "url": "http://localhost:3000/api/enquiries",
+      "method": "POST",
+      "sortNum": 1,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"John Smith\",\n  \"phone\": \"07700 900123\",\n  \"email\": \"john@example.co.uk\",\n  \"address_line1\": \"14 Oak Street\",\n  \"city\": \"Birmingham\",\n  \"county\": \"West Midlands\",\n  \"postcode\": \"B1 1AA\",\n  \"received_date\": \"2026-05-27T00:00:00.000Z\",\n  \"source\": \"PHONE\",\n  \"notes\": \"Called about boiler replacement\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.enquiry_no", "action": "isValue", "value": "" },
+        { "type": "res-body", "custom": "$.status", "action": "equal", "value": "NEW" }
+      ],
+      "docs": "Creates a new enquiry. OWNER only. enquiry_no auto-increments per company inside a transaction. Returns 403 if engineer calls."
+    },
+    {
+      "_id": "enquiry-list",
+      "colId": "vantro-enquiries",
+      "containerId": "folder-enquiries",
+      "name": "List Enquiries",
+      "url": "http://localhost:3000/api/enquiries",
+      "method": "GET",
+      "sortNum": 2,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$", "action": "isArray", "value": "" }
+      ],
+      "docs": "Lists enquiries for the company. OWNERs see all; ENGINEERs only see enquiries assigned to them. Optional ?status=NEW filter."
+    },
+    {
+      "_id": "enquiry-list-filtered",
+      "colId": "vantro-enquiries",
+      "containerId": "folder-enquiries",
+      "name": "List Enquiries — Filter by Status",
+      "url": "http://localhost:3000/api/enquiries?status=NEW",
+      "method": "GET",
+      "sortNum": 3,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [{ "name": "status", "value": "NEW" }],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" }
+      ],
+      "docs": "Returns only enquiries with status=NEW. Valid values: NEW, CONTACTED, QUOTED, CONVERTED, DONE, REJECTED."
+    },
+    {
+      "_id": "enquiry-get-one",
+      "colId": "vantro-enquiries",
+      "containerId": "folder-enquiries",
+      "name": "Get Enquiry by ID",
+      "url": "http://localhost:3000/api/enquiries/REPLACE_WITH_ENQUIRY_ID",
+      "method": "GET",
+      "sortNum": 4,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.id", "action": "isValue", "value": "" }
+      ],
+      "docs": "Get a single enquiry. Returns 404 if not found or belongs to another company. ENGINEER can only see their assigned enquiries."
+    },
+    {
+      "_id": "enquiry-update",
+      "colId": "vantro-enquiries",
+      "containerId": "folder-enquiries",
+      "name": "Update Enquiry",
+      "url": "http://localhost:3000/api/enquiries/REPLACE_WITH_ENQUIRY_ID",
+      "method": "PATCH",
+      "sortNum": 5,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"notes\": \"Updated: customer confirmed they want a quote\",\n  \"status\": \"CONTACTED\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.status", "action": "equal", "value": "CONTACTED" }
+      ],
+      "docs": "Updates any enquiry field including status. OWNER only. Replace REPLACE_WITH_ENQUIRY_ID with a real ID."
+    },
+    {
+      "_id": "enquiry-update-status",
+      "colId": "vantro-enquiries",
+      "containerId": "folder-enquiries",
+      "name": "Update Enquiry Status",
+      "url": "http://localhost:3000/api/enquiries/REPLACE_WITH_ENQUIRY_ID/status",
+      "method": "PATCH",
+      "sortNum": 6,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"status\": \"DONE\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.status", "action": "equal", "value": "DONE" }
+      ],
+      "docs": "Quick status update endpoint. OWNER only. Valid statuses: NEW, CONTACTED, QUOTED, CONVERTED, DONE, REJECTED."
+    },
+    {
+      "_id": "enquiry-convert",
+      "colId": "vantro-enquiries",
+      "containerId": "folder-enquiries",
+      "name": "Convert Enquiry to Job",
+      "url": "http://localhost:3000/api/enquiries/REPLACE_WITH_ENQUIRY_ID/convert",
+      "method": "POST",
+      "sortNum": 7,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"scheduled_at\": \"2026-06-15T09:00:00.000Z\",\n  \"engineer_id\": \"\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.id", "action": "isValue", "value": "" },
+        { "type": "res-body", "custom": "$.status", "action": "equal", "value": "QUOTED" }
+      ],
+      "docs": "Converts enquiry to a Job in a transaction. Creates a new Customer if enquiry has no customer_id. Sets enquiry status to CONVERTED. Returns 409 if already converted."
+    },
+    {
+      "_id": "enquiry-delete",
+      "colId": "vantro-enquiries",
+      "containerId": "folder-enquiries",
+      "name": "Delete Enquiry",
+      "url": "http://localhost:3000/api/enquiries/REPLACE_WITH_ENQUIRY_ID",
+      "method": "DELETE",
+      "sortNum": 8,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "204" }
+      ],
+      "docs": "Deletes an enquiry. OWNER only. Returns 409 if the enquiry has been converted to a job. Returns 204 on success."
+    }
+  ]
+}

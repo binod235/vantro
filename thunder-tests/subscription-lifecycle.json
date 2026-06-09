@@ -1,0 +1,237 @@
+{
+  "_id": "vantro-subscription-lifecycle",
+  "colName": "Vantro — Subscription Lifecycle",
+  "created": "2026-05-30T00:00:00.000Z",
+  "sortNum": 13,
+  "folders": [
+    { "_id": "folder-sl-trial", "name": "A–B Trial access", "containerId": "" },
+    { "_id": "folder-sl-lock", "name": "C–D Lock & read-only", "containerId": "" },
+    { "_id": "folder-sl-checkout", "name": "E–F Stripe checkout", "containerId": "" },
+    { "_id": "folder-sl-webhook", "name": "G Webhook events", "containerId": "" },
+    { "_id": "folder-sl-reminders", "name": "H Reminder emails", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "sl-trial-write-access",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-trial",
+      "name": "TRIAL company has full write access",
+      "url": "http://localhost:3000/api/customers",
+      "method": "POST",
+      "sortNum": 1,
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "body": { "type": "json", "raw": "{ \"name\": \"Lifecycle Test Customer\" }" },
+      "tests": [
+        { "type": "res-code", "action": "equal", "value": "201" }
+      ],
+      "docs": "PRE-REQUISITE: Signed in as OWNER with subscription_status=TRIAL.\nExpect 201. SubscriptionGuard must allow TRIAL."
+    },
+    {
+      "_id": "sl-trial-subscription-fields",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-trial",
+      "name": "GET /companies/me returns subscription fields (no Stripe IDs)",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.subscription_status", "action": "equal", "value": "TRIAL" },
+        { "type": "res-body", "custom": "$.trial_ends_at", "action": "isValue", "value": "" }
+      ],
+      "docs": "Confirms subscription_status and trial_ends_at are returned.\nNOTE: stripe_customer_id and stripe_subscription_id must NOT be in this response."
+    },
+    {
+      "_id": "sl-lock-expired-trial",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-lock",
+      "name": "Expire trial → run lock endpoint → company becomes LOCKED",
+      "url": "http://localhost:3000/api/internal/trials/expire-now",
+      "method": "POST",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "action": "in", "value": "200,201" },
+        { "type": "res-body", "custom": "$.locked", "action": "isValue", "value": "" }
+      ],
+      "docs": "PRE-REQUISITE: SQL: UPDATE \"Company\" SET subscription_status='TRIAL', trial_ends_at='2020-01-01' WHERE id='<id>';\nExpect locked > 0 on first run, 0 on second run (idempotent)."
+    },
+    {
+      "_id": "sl-locked-get-allowed",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-lock",
+      "name": "LOCKED company can GET (read-only)",
+      "url": "http://localhost:3000/api/jobs",
+      "method": "GET",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "action": "equal", "value": "200" }
+      ],
+      "docs": "SubscriptionGuard only blocks write methods. GET must pass regardless of subscription_status."
+    },
+    {
+      "_id": "sl-locked-post-blocked",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-lock",
+      "name": "LOCKED company POST → 403 SUBSCRIPTION_LOCKED",
+      "url": "http://localhost:3000/api/customers",
+      "method": "POST",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "body": { "type": "json", "raw": "{ \"name\": \"Should Be Blocked\" }" },
+      "tests": [
+        { "type": "res-code", "action": "equal", "value": "403" },
+        { "type": "res-body", "custom": "$.code", "action": "equal", "value": "SUBSCRIPTION_LOCKED" }
+      ],
+      "docs": "PRE-REQUISITE: company subscription_status=LOCKED.\nExpect 403 with code=SUBSCRIPTION_LOCKED. Frontend apiFetch dispatches vantro:subscription-locked event."
+    },
+    {
+      "_id": "sl-locked-patch-blocked",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-lock",
+      "name": "LOCKED company PATCH → 403 SUBSCRIPTION_LOCKED",
+      "url": "http://localhost:3000/api/jobs/REPLACE_WITH_JOB_ID",
+      "method": "PATCH",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "body": { "type": "json", "raw": "{ \"title\": \"Should Be Blocked\" }" },
+      "tests": [
+        { "type": "res-code", "action": "equal", "value": "403" },
+        { "type": "res-body", "custom": "$.code", "action": "equal", "value": "SUBSCRIPTION_LOCKED" }
+      ],
+      "docs": "PRE-REQUISITE: company subscription_status=LOCKED. Same test for DELETE."
+    },
+    {
+      "_id": "sl-owner-trial-checkout",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-checkout",
+      "name": "OWNER TRIAL → create checkout session → 201 + Stripe URL",
+      "url": "http://localhost:3000/api/billing/create-checkout-session",
+      "method": "POST",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.url", "action": "contains", "value": "checkout.stripe.com" }
+      ],
+      "docs": "PRE-REQUISITE: OWNER, TRIAL company, STRIPE keys set.\nExpect 201 + {url: 'https://checkout.stripe.com/...'}."
+    },
+    {
+      "_id": "sl-owner-locked-checkout",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-checkout",
+      "name": "OWNER LOCKED → create checkout session → 201 + Stripe URL",
+      "url": "http://localhost:3000/api/billing/create-checkout-session",
+      "method": "POST",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.url", "action": "contains", "value": "checkout.stripe.com" }
+      ],
+      "docs": "PRE-REQUISITE: SQL: UPDATE \"Company\" SET subscription_status='LOCKED' WHERE id='<id>';\nLOCKED companies must still be able to subscribe."
+    },
+    {
+      "_id": "sl-engineer-checkout-403",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-checkout",
+      "name": "ENGINEER → create checkout session → 403",
+      "url": "http://localhost:3000/api/billing/create-checkout-session",
+      "method": "POST",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [{ "type": "res-code", "action": "equal", "value": "403" }],
+      "docs": "PRE-REQUISITE: Signed in as ENGINEER. RolesGuard must return 403."
+    },
+    {
+      "_id": "sl-active-checkout-400",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-checkout",
+      "name": "ACTIVE company → create checkout session → 400",
+      "url": "http://localhost:3000/api/billing/create-checkout-session",
+      "method": "POST",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "action": "equal", "value": "400" },
+        { "type": "res-body", "custom": "$.message", "action": "equal", "value": "Company already has an active subscription." }
+      ],
+      "docs": "PRE-REQUISITE: SQL: UPDATE \"Company\" SET subscription_status='ACTIVE' WHERE id='<id>';\nExpect 400 with correct message."
+    },
+    {
+      "_id": "sl-webhook-checkout-completed",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-webhook",
+      "name": "⚡ checkout.session.completed → company becomes ACTIVE",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "TEST VIA STRIPE CLI:\n  stripe listen --forward-to http://localhost:3000/api/billing/webhook\n  stripe trigger checkout.session.completed\n\nOR complete the real test checkout flow in the browser.\n\nVerify:\n  GET /api/companies/me → subscription_status = 'ACTIVE'\n  payment_failed_at = null\n  stripe_subscription_id is saved in DB"
+    },
+    {
+      "_id": "sl-webhook-sub-deleted",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-webhook",
+      "name": "⚡ customer.subscription.deleted → company becomes LOCKED",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "TEST VIA STRIPE CLI:\n  stripe trigger customer.subscription.deleted\n\nVerify:\n  GET /api/companies/me → subscription_status = 'LOCKED'\n  Write access blocked with SUBSCRIPTION_LOCKED"
+    },
+    {
+      "_id": "sl-webhook-payment-failed",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-webhook",
+      "name": "⚡ invoice.payment_failed → payment_failed_at set, status unchanged",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "TEST VIA STRIPE CLI:\n  stripe trigger invoice.payment_failed\n\nVerify:\n  GET /api/companies/me → subscription_status is UNCHANGED\n  payment_failed_at is now set to a datetime\n  Company is NOT locked yet"
+    },
+    {
+      "_id": "sl-reminder-4-day",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-reminders",
+      "name": "4-day reminder: sends once to OWNER only",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [{ "type": "res-code", "action": "equal", "value": "200" }],
+      "docs": "MANUAL TEST:\n\nSQL to set trial ending in 4 days:\n  UPDATE \"Company\" SET subscription_status='TRIAL', trial_ends_at=NOW() + INTERVAL '4 days', trial_reminder_4_days_sent_at=NULL WHERE id='<id>';\n\nThen trigger the scheduler (at 00:15 UTC or add a test endpoint if needed).\nVerify:\n  - RESEND_API_KEY must be set for actual delivery\n  - Only OWNER receives the email\n  - ENGINEER does NOT receive the email\n  - Second run: trial_reminder_4_days_sent_at is set → no second email"
+    },
+    {
+      "_id": "sl-reminder-1-day",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-reminders",
+      "name": "1-day reminder: sends once to OWNER only",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [{ "type": "res-code", "action": "equal", "value": "200" }],
+      "docs": "MANUAL TEST:\n\nSQL to set trial ending in 1 day:\n  UPDATE \"Company\" SET subscription_status='TRIAL', trial_ends_at=NOW() + INTERVAL '1 day', trial_reminder_1_day_sent_at=NULL WHERE id='<id>';\n\nVerify:\n  - RESEND_API_KEY must be set for actual delivery\n  - Only OWNER receives the email, not ENGINEER\n  - Second run does NOT resend (idempotent via sent_at tracking)"
+    },
+    {
+      "_id": "sl-reminder-engineer-no-email",
+      "colId": "vantro-subscription-lifecycle",
+      "containerId": "folder-sl-reminders",
+      "name": "ENGINEER does not receive trial reminders",
+      "url": "http://localhost:3000/api/users/me",
+      "method": "GET",
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.role", "action": "equal", "value": "ENGINEER" }
+      ],
+      "docs": "Confirm user is ENGINEER. The TrialReminderService queries company.users WHERE role='OWNER'. ENGINEER users are not included in that query — they never receive reminder emails."
+    }
+  ]
+}

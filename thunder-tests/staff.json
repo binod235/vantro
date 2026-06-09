@@ -1,0 +1,108 @@
+{
+  "_id": "vantro-staff",
+  "colName": "Vantro — Staff",
+  "created": "2026-05-27T00:00:00.000Z",
+  "sortNum": 5,
+  "folders": [
+    { "_id": "folder-staff", "name": "Staff", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "staff-invite",
+      "colId": "vantro-staff",
+      "containerId": "folder-staff",
+      "name": "Invite Staff Member",
+      "url": "http://localhost:3000/api/staff/invite",
+      "method": "POST",
+      "sortNum": 1,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"email\": \"engineer@example.co.uk\",\n  \"name\": \"Dave Smith\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.message", "action": "equal", "value": "Invitation sent" }
+      ]
+    },
+    {
+      "_id": "staff-accept-invite",
+      "colId": "vantro-staff",
+      "containerId": "folder-staff",
+      "name": "Accept Invite (set password)",
+      "url": "http://localhost:3000/api/staff/accept-invite",
+      "method": "POST",
+      "sortNum": 2,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"token\": \"REPLACE_WITH_TOKEN_FROM_EMAIL\",\n  \"password\": \"newpassword123\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.message", "action": "equal", "value": "Account activated" }
+      ]
+    },
+    {
+      "_id": "staff-list",
+      "colId": "vantro-staff",
+      "containerId": "folder-staff",
+      "name": "List Staff",
+      "url": "http://localhost:3000/api/staff",
+      "method": "GET",
+      "sortNum": 3,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$", "action": "isArray", "value": "" }
+      ]
+    },
+    {
+      "_id": "staff-update",
+      "colId": "vantro-staff",
+      "containerId": "folder-staff",
+      "name": "Update Staff Member",
+      "url": "http://localhost:3000/api/staff/REPLACE_WITH_STAFF_ID",
+      "method": "PATCH",
+      "sortNum": 4,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Dave Smith\",\n  \"role\": \"ENGINEER\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" }
+      ]
+    },
+    {
+      "_id": "staff-remove",
+      "colId": "vantro-staff",
+      "containerId": "folder-staff",
+      "name": "Remove Staff Member",
+      "url": "http://localhost:3000/api/staff/REPLACE_WITH_STAFF_ID",
+      "method": "DELETE",
+      "sortNum": 5,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "204" }
+      ]
+    }
+  ]
+}

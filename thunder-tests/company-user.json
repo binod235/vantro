@@ -1,0 +1,192 @@
+{
+  "_id": "vantro-company-user",
+  "colName": "Vantro — Companies & Users",
+  "created": "2026-05-27T00:00:00.000Z",
+  "sortNum": 2,
+  "folders": [
+    { "_id": "folder-companies", "name": "Companies", "containerId": "" },
+    { "_id": "folder-users", "name": "Users", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "company-create",
+      "colId": "vantro-company-user",
+      "containerId": "folder-companies",
+      "name": "Create Company",
+      "url": "http://localhost:3000/api/companies",
+      "method": "POST",
+      "sortNum": 1,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Smith Plumbing & Heating Ltd\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.name", "action": "equal", "value": "Smith Plumbing & Heating Ltd" }
+      ],
+      "docs": "Creates the company and sets the caller's role=OWNER and companyId. Requires active session (sign in first). Returns 409 if the caller already has a company."
+    },
+    {
+      "_id": "company-get-me",
+      "colId": "vantro-company-user",
+      "containerId": "folder-companies",
+      "name": "Get My Company",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 2,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.id", "action": "isValue", "value": "" }
+      ],
+      "docs": "Returns the company the current user belongs to. Returns 404 if the user has not created a company yet."
+    },
+    {
+      "_id": "company-update",
+      "colId": "vantro-company-user",
+      "containerId": "folder-companies",
+      "name": "Update Company",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "PATCH",
+      "sortNum": 3,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Smith Plumbing & Heating Ltd (Updated)\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" }
+      ],
+      "docs": "Updates the company name. OWNER role required. Returns 403 if called by an engineer."
+    },
+    {
+      "_id": "user-create",
+      "colId": "vantro-company-user",
+      "containerId": "folder-users",
+      "name": "Create User (Engineer)",
+      "url": "http://localhost:3000/api/users",
+      "method": "POST",
+      "sortNum": 4,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Bob Engineer\",\n  \"email\": \"bob@smithplumbing.co.uk\",\n  \"password\": \"Engineer1!\",\n  \"role\": \"ENGINEER\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.role", "action": "equal", "value": "ENGINEER" },
+        { "type": "res-body", "custom": "$.companyId", "action": "isValue", "value": "" }
+      ],
+      "docs": "Owner creates an engineer account and immediately links them to the company. OWNER role required. Password is hashed by Better Auth. Returns 409 if email already exists."
+    },
+    {
+      "_id": "user-list",
+      "colId": "vantro-company-user",
+      "containerId": "folder-users",
+      "name": "List Users",
+      "url": "http://localhost:3000/api/users",
+      "method": "GET",
+      "sortNum": 5,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$", "action": "isArray", "value": "" }
+      ],
+      "docs": "Returns all users belonging to the caller's company. OWNER role required. Every record in the list belongs to the same company — query is always filtered by company_id."
+    },
+    {
+      "_id": "user-me",
+      "colId": "vantro-company-user",
+      "containerId": "folder-users",
+      "name": "Get My Profile",
+      "url": "http://localhost:3000/api/users/me",
+      "method": "GET",
+      "sortNum": 6,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.id", "action": "isValue", "value": "" }
+      ],
+      "docs": "Returns fresh user data from the database for the current session user. Available to both OWNER and ENGINEER. Use this after creating a company to confirm companyId is set."
+    },
+    {
+      "_id": "user-get-one",
+      "colId": "vantro-company-user",
+      "containerId": "folder-users",
+      "name": "Get User by ID",
+      "url": "http://localhost:3000/api/users/REPLACE_WITH_USER_ID",
+      "method": "GET",
+      "sortNum": 7,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" }
+      ],
+      "docs": "Returns a single user by ID. Returns 404 if the user does not exist in this company — never leaks users from other companies. OWNER role required."
+    },
+    {
+      "_id": "user-update",
+      "colId": "vantro-company-user",
+      "containerId": "folder-users",
+      "name": "Update User",
+      "url": "http://localhost:3000/api/users/REPLACE_WITH_USER_ID",
+      "method": "PATCH",
+      "sortNum": 8,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Bob Engineer (Updated)\",\n  \"role\": \"OWNER\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" }
+      ],
+      "docs": "Updates name or role. OWNER can update any user in the company. Engineers can only update their own profile (send their own ID). Returns 403 if an engineer tries to update another user."
+    },
+    {
+      "_id": "user-remove",
+      "colId": "vantro-company-user",
+      "containerId": "folder-users",
+      "name": "Remove User from Company",
+      "url": "http://localhost:3000/api/users/REPLACE_WITH_USER_ID",
+      "method": "DELETE",
+      "sortNum": 9,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "204" }
+      ],
+      "docs": "Unlinks the user from the company (sets companyId=null). Does NOT delete the user record — all gas certificates, timesheets, and job assignments remain intact for the audit trail. Returns 400 if the owner tries to remove themselves. OWNER role required."
+    }
+  ]
+}

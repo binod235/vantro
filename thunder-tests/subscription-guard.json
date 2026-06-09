@@ -1,0 +1,174 @@
+{
+  "_id": "vantro-subscription-guard",
+  "colName": "Vantro — Subscription Guard",
+  "created": "2026-05-29T00:00:00.000Z",
+  "sortNum": 9,
+  "folders": [
+    { "_id": "folder-sg-locked", "name": "LOCKED account (write blocked)", "containerId": "" },
+    { "_id": "folder-sg-read", "name": "LOCKED account (reads allowed)", "containerId": "" },
+    { "_id": "folder-sg-active", "name": "TRIAL / ACTIVE account (full access)", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "sg-locked-post-job",
+      "colId": "vantro-subscription-guard",
+      "containerId": "folder-sg-locked",
+      "name": "LOCKED — POST blocked → 403",
+      "url": "http://localhost:3000/api/jobs",
+      "method": "POST",
+      "sortNum": 1,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"title\": \"Test Job\",\n  \"customer_id\": \"any-id\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "403" },
+        { "type": "res-body", "custom": "$.message", "action": "equal", "value": "Your trial has ended. Please subscribe to continue using Vantro." },
+        { "type": "res-body", "custom": "$.code", "action": "equal", "value": "SUBSCRIPTION_LOCKED" }
+      ],
+      "docs": "PRE-REQUISITE: Sign in as a user whose company has subscription_status=LOCKED (set via DB: UPDATE \"Company\" SET subscription_status='LOCKED' WHERE id='...'). POST is a write method — must return 403 with SUBSCRIPTION_LOCKED code."
+    },
+    {
+      "_id": "sg-locked-patch-job",
+      "colId": "vantro-subscription-guard",
+      "containerId": "folder-sg-locked",
+      "name": "LOCKED — PATCH blocked → 403",
+      "url": "http://localhost:3000/api/jobs/REPLACE_WITH_JOB_ID",
+      "method": "PATCH",
+      "sortNum": 2,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"title\": \"Updated\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "403" },
+        { "type": "res-body", "custom": "$.code", "action": "equal", "value": "SUBSCRIPTION_LOCKED" }
+      ],
+      "docs": "PRE-REQUISITE: company subscription_status=LOCKED. PATCH is a write method — must return 403."
+    },
+    {
+      "_id": "sg-locked-delete-job",
+      "colId": "vantro-subscription-guard",
+      "containerId": "folder-sg-locked",
+      "name": "LOCKED — DELETE blocked → 403",
+      "url": "http://localhost:3000/api/jobs/REPLACE_WITH_JOB_ID",
+      "method": "DELETE",
+      "sortNum": 3,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "403" },
+        { "type": "res-body", "custom": "$.code", "action": "equal", "value": "SUBSCRIPTION_LOCKED" }
+      ],
+      "docs": "PRE-REQUISITE: company subscription_status=LOCKED. DELETE is a write method — must return 403."
+    },
+    {
+      "_id": "sg-locked-get-jobs",
+      "colId": "vantro-subscription-guard",
+      "containerId": "folder-sg-read",
+      "name": "LOCKED — GET allowed → 200",
+      "url": "http://localhost:3000/api/jobs",
+      "method": "GET",
+      "sortNum": 4,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$", "action": "isArray", "value": "" }
+      ],
+      "docs": "PRE-REQUISITE: company subscription_status=LOCKED. GET is read-only — guard must pass it through. LOCKED accounts can still view their existing data."
+    },
+    {
+      "_id": "sg-locked-get-customers",
+      "colId": "vantro-subscription-guard",
+      "containerId": "folder-sg-read",
+      "name": "LOCKED — GET customers allowed → 200",
+      "url": "http://localhost:3000/api/customers",
+      "method": "GET",
+      "sortNum": 5,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" }
+      ],
+      "docs": "PRE-REQUISITE: company subscription_status=LOCKED. GET is read-only — always allowed regardless of subscription status."
+    },
+    {
+      "_id": "sg-trial-post-job",
+      "colId": "vantro-subscription-guard",
+      "containerId": "folder-sg-active",
+      "name": "TRIAL — POST allowed → 201",
+      "url": "http://localhost:3000/api/customers",
+      "method": "POST",
+      "sortNum": 6,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Guard Test Customer\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" }
+      ],
+      "docs": "PRE-REQUISITE: company subscription_status=TRIAL (default for new accounts). Write requests must be allowed — guard should pass through."
+    },
+    {
+      "_id": "sg-active-post-job",
+      "colId": "vantro-subscription-guard",
+      "containerId": "folder-sg-active",
+      "name": "ACTIVE — POST allowed → 201",
+      "url": "http://localhost:3000/api/customers",
+      "method": "POST",
+      "sortNum": 7,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Guard Test Customer (Active)\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" }
+      ],
+      "docs": "PRE-REQUISITE: company subscription_status=ACTIVE (set via DB or Stripe webhook). Write requests must be allowed."
+    },
+    {
+      "_id": "sg-public-bypass",
+      "colId": "vantro-subscription-guard",
+      "containerId": "folder-sg-active",
+      "name": "@Public route bypasses guard → 200",
+      "url": "http://localhost:3000/api/companies/public/REPLACE_WITH_SLUG",
+      "method": "GET",
+      "sortNum": 8,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" }
+      ],
+      "docs": "Routes decorated with @Public() bypass ALL guards including SubscriptionGuard. No session or subscription check is performed. Replace REPLACE_WITH_SLUG with a real slug."
+    }
+  ]
+}

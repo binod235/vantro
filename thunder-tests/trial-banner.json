@@ -1,0 +1,165 @@
+{
+  "_id": "vantro-trial-banner",
+  "colName": "Vantro — Trial Banner",
+  "created": "2026-05-29T00:00:00.000Z",
+  "sortNum": 11,
+  "folders": [
+    { "_id": "folder-tb-backend", "name": "Backend — subscription fields", "containerId": "" },
+    { "_id": "folder-tb-states", "name": "Banner states (manual UI checks)", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "tb-company-me-returns-subscription",
+      "colId": "vantro-trial-banner",
+      "containerId": "folder-tb-backend",
+      "name": "GET /companies/me returns subscription_status and trial_ends_at",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 1,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.subscription_status", "action": "isValue", "value": "" },
+        { "type": "res-body", "custom": "$.trial_ends_at", "action": "isValue", "value": "" },
+        { "type": "res-body", "custom": "$.subscription_status", "action": "in", "value": "TRIAL,ACTIVE,LOCKED" }
+      ],
+      "docs": "Verify the companies/me endpoint returns subscription_status and trial_ends_at. Both fields must be present — the TrialBanner and LockedOverlay depend on them. Must NOT return stripe_customer_id or stripe_subscription_id."
+    },
+    {
+      "_id": "tb-no-stripe-leak",
+      "colId": "vantro-trial-banner",
+      "containerId": "folder-tb-backend",
+      "name": "GET /companies/me does not leak Stripe fields",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 2,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" }
+      ],
+      "docs": "Manual check: inspect the response body and confirm stripe_customer_id and stripe_subscription_id are present in the response only if your implementation exposes them. Per spec these should not be returned to the frontend. Currently the backend returns the full Company row — if you want to hide Stripe fields, add a select() to companies.service.ts findForUser()."
+    },
+    {
+      "_id": "tb-trial-future",
+      "colId": "vantro-trial-banner",
+      "containerId": "folder-tb-states",
+      "name": "TRIAL — future trial_ends_at — info banner (blue)",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 3,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.subscription_status", "action": "equal", "value": "TRIAL" }
+      ],
+      "docs": "PRE-REQUISITE: subscription_status=TRIAL, trial_ends_at more than 3 days from now.\n\nSQL: UPDATE \"Company\" SET subscription_status='TRIAL', trial_ends_at=NOW() + INTERVAL '10 days' WHERE id='<id>';\n\nUI CHECK: Open dashboard — should see blue info banner: 'Your free trial ends in 10 days.'\nOWNER: sees 'Billing coming soon' button.\nENGINEER: sees 'Ask the account owner to subscribe.' text, no button."
+    },
+    {
+      "_id": "tb-trial-warning",
+      "colId": "vantro-trial-banner",
+      "containerId": "folder-tb-states",
+      "name": "TRIAL — 2 days left — warning banner (amber)",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 4,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.subscription_status", "action": "equal", "value": "TRIAL" }
+      ],
+      "docs": "PRE-REQUISITE: subscription_status=TRIAL, trial_ends_at 2 days from now.\n\nSQL: UPDATE \"Company\" SET subscription_status='TRIAL', trial_ends_at=NOW() + INTERVAL '2 days' WHERE id='<id>';\n\nUI CHECK: amber banner: 'Your free trial ends in 2 days. Subscribe soon to avoid losing edit access.'"
+    },
+    {
+      "_id": "tb-trial-today",
+      "colId": "vantro-trial-banner",
+      "containerId": "folder-tb-states",
+      "name": "TRIAL — ends today — urgent banner (red)",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 5,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.subscription_status", "action": "equal", "value": "TRIAL" }
+      ],
+      "docs": "PRE-REQUISITE: subscription_status=TRIAL, trial_ends_at = today (later today UTC).\n\nSQL: UPDATE \"Company\" SET subscription_status='TRIAL', trial_ends_at=NOW() + INTERVAL '2 hours' WHERE id='<id>';\n\nUI CHECK: red banner: 'Your free trial ends today. Subscribe to keep creating and editing work.'"
+    },
+    {
+      "_id": "tb-trial-expired",
+      "colId": "vantro-trial-banner",
+      "containerId": "folder-tb-states",
+      "name": "TRIAL — already expired — urgent banner (red)",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 6,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.subscription_status", "action": "equal", "value": "TRIAL" }
+      ],
+      "docs": "PRE-REQUISITE: subscription_status still TRIAL but trial_ends_at is in the past (cron hasn't run yet or test scenario).\n\nSQL: UPDATE \"Company\" SET subscription_status='TRIAL', trial_ends_at='2020-01-01' WHERE id='<id>';\n\nUI CHECK: red banner: 'Your free trial has ended. Your account may be locked soon.' No lock yet — backend cron owns that."
+    },
+    {
+      "_id": "tb-active-no-banner",
+      "colId": "vantro-trial-banner",
+      "containerId": "folder-tb-states",
+      "name": "ACTIVE — no trial banner shown",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 7,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.subscription_status", "action": "equal", "value": "ACTIVE" }
+      ],
+      "docs": "PRE-REQUISITE: subscription_status=ACTIVE.\n\nSQL: UPDATE \"Company\" SET subscription_status='ACTIVE' WHERE id='<id>';\n\nUI CHECK: No trial banner visible anywhere in the dashboard."
+    },
+    {
+      "_id": "tb-locked-no-trial-banner",
+      "colId": "vantro-trial-banner",
+      "containerId": "folder-tb-states",
+      "name": "LOCKED — trial banner not shown (LockedOverlay takes over)",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 8,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.subscription_status", "action": "equal", "value": "LOCKED" }
+      ],
+      "docs": "PRE-REQUISITE: subscription_status=LOCKED.\n\nSQL: UPDATE \"Company\" SET subscription_status='LOCKED' WHERE id='<id>';\n\nUI CHECK: No trial banner in header. The LockedOverlay modal fires when any write attempt returns 403 with code=SUBSCRIPTION_LOCKED."
+    }
+  ]
+}

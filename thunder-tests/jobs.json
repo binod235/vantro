@@ -1,0 +1,199 @@
+{
+  "_id": "vantro-jobs",
+  "colName": "Vantro — Jobs",
+  "created": "2026-05-27T00:00:00.000Z",
+  "sortNum": 4,
+  "folders": [
+    { "_id": "folder-jobs", "name": "Jobs", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "job-create",
+      "colId": "vantro-jobs",
+      "containerId": "folder-jobs",
+      "name": "Create Job",
+      "url": "http://localhost:3000/api/jobs",
+      "method": "POST",
+      "sortNum": 1,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"title\": \"Boiler service at Oak Street\",\n  \"description\": \"Annual boiler service and safety check\",\n  \"customer_id\": \"REPLACE_WITH_CUSTOMER_ID\",\n  \"engineer_id\": \"REPLACE_WITH_ENGINEER_ID\",\n  \"status\": \"SCHEDULED\",\n  \"scheduled_at\": \"2026-06-15T09:00:00.000Z\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.title", "action": "equal", "value": "Boiler service at Oak Street" },
+        { "type": "res-body", "custom": "$.status", "action": "equal", "value": "SCHEDULED" },
+        { "type": "res-body", "custom": "$.customer.id", "action": "isValue", "value": "" }
+      ],
+      "docs": "Creates a new job for a customer. OWNER role required. customer_id must belong to the same company. engineer_id is optional — omit to leave unassigned. status defaults to QUOTED if omitted. Returns 404 if customer or engineer not found in this company."
+    },
+    {
+      "_id": "job-create-minimal",
+      "colId": "vantro-jobs",
+      "containerId": "folder-jobs",
+      "name": "Create Job (Minimal)",
+      "url": "http://localhost:3000/api/jobs",
+      "method": "POST",
+      "sortNum": 2,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"title\": \"Radiator leak repair\",\n  \"customer_id\": \"REPLACE_WITH_CUSTOMER_ID\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.status", "action": "equal", "value": "QUOTED" }
+      ],
+      "docs": "Creates a job with only required fields. Status defaults to QUOTED. Engineer and schedule are unset."
+    },
+    {
+      "_id": "job-list-owner",
+      "colId": "vantro-jobs",
+      "containerId": "folder-jobs",
+      "name": "List Jobs (Owner — all)",
+      "url": "http://localhost:3000/api/jobs",
+      "method": "GET",
+      "sortNum": 3,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$", "action": "isArray", "value": "" }
+      ],
+      "docs": "Returns all jobs in the company when called as OWNER. Each job includes nested customer and engineer objects. When called as ENGINEER, returns only jobs where engineer_id matches the caller."
+    },
+    {
+      "_id": "job-get-one",
+      "colId": "vantro-jobs",
+      "containerId": "folder-jobs",
+      "name": "Get Job by ID",
+      "url": "http://localhost:3000/api/jobs/REPLACE_WITH_JOB_ID",
+      "method": "GET",
+      "sortNum": 4,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.id", "action": "isValue", "value": "" }
+      ],
+      "docs": "Returns a single job with customer and engineer details. OWNER can fetch any job in the company. ENGINEER gets 404 if not assigned to this job — does not reveal the job exists."
+    },
+    {
+      "_id": "job-update-status",
+      "colId": "vantro-jobs",
+      "containerId": "folder-jobs",
+      "name": "Update Job Status",
+      "url": "http://localhost:3000/api/jobs/REPLACE_WITH_JOB_ID",
+      "method": "PATCH",
+      "sortNum": 5,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"status\": \"IN_PROGRESS\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.status", "action": "equal", "value": "IN_PROGRESS" }
+      ],
+      "docs": "Updates the job status. Valid values: QUOTED, SCHEDULED, IN_PROGRESS, COMPLETED, INVOICED. OWNER role required. All status transitions are allowed — the kanban board enforces ordering in the UI."
+    },
+    {
+      "_id": "job-update-assign",
+      "colId": "vantro-jobs",
+      "containerId": "folder-jobs",
+      "name": "Assign Engineer",
+      "url": "http://localhost:3000/api/jobs/REPLACE_WITH_JOB_ID",
+      "method": "PATCH",
+      "sortNum": 6,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"engineer_id\": \"REPLACE_WITH_ENGINEER_ID\",\n  \"scheduled_at\": \"2026-06-20T08:00:00.000Z\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.engineer.id", "action": "isValue", "value": "" }
+      ],
+      "docs": "Assigns an engineer and sets a schedule date. Pass engineer_id: null to unassign. Pass scheduled_at: null to clear the date. Returns 404 if engineer does not belong to this company."
+    },
+    {
+      "_id": "job-update-full",
+      "colId": "vantro-jobs",
+      "containerId": "folder-jobs",
+      "name": "Update Job (Full)",
+      "url": "http://localhost:3000/api/jobs/REPLACE_WITH_JOB_ID",
+      "method": "PATCH",
+      "sortNum": 7,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"title\": \"Boiler service — rescheduled\",\n  \"description\": \"Customer requested afternoon slot\",\n  \"status\": \"SCHEDULED\",\n  \"scheduled_at\": \"2026-06-22T14:00:00.000Z\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" }
+      ],
+      "docs": "Updates multiple job fields in one request. All fields are optional — only include fields to change. OWNER role required."
+    },
+    {
+      "_id": "job-unassign-engineer",
+      "colId": "vantro-jobs",
+      "containerId": "folder-jobs",
+      "name": "Unassign Engineer",
+      "url": "http://localhost:3000/api/jobs/REPLACE_WITH_JOB_ID",
+      "method": "PATCH",
+      "sortNum": 8,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"engineer_id\": null\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" }
+      ],
+      "docs": "Removes the engineer assignment by passing null. The job remains in the company and retains its status. OWNER role required."
+    },
+    {
+      "_id": "job-delete",
+      "colId": "vantro-jobs",
+      "containerId": "folder-jobs",
+      "name": "Delete Job",
+      "url": "http://localhost:3000/api/jobs/REPLACE_WITH_JOB_ID",
+      "method": "DELETE",
+      "sortNum": 9,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "204" }
+      ],
+      "docs": "Permanently deletes a job. OWNER role required. Returns 409 if the job has timesheets, gas certificates, quotes, invoices, or subcontractor payments. Returns 404 if the job does not belong to this company."
+    }
+  ]
+}

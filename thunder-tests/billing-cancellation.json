@@ -1,0 +1,155 @@
+{
+  "_id": "vantro-billing-cancellation",
+  "colName": "Vantro — Billing Cancellation States",
+  "created": "2026-05-30T00:00:00.000Z",
+  "sortNum": 15,
+  "folders": [
+    { "_id": "folder-bc-webhook", "name": "Webhook cancel states", "containerId": "" },
+    { "_id": "folder-bc-access", "name": "Access after cancellation", "containerId": "" },
+    { "_id": "folder-bc-ui", "name": "UI state checks", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "bc-sub-updated-active-no-cancel",
+      "colId": "vantro-billing-cancellation",
+      "containerId": "folder-bc-webhook",
+      "name": "⚡ subscription.updated active + cancel_at_period_end=false → ACTIVE",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "sortNum": 1,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "TEST VIA STRIPE CLI:\n  stripe trigger customer.subscription.updated\n\nOR: Subscribe in the portal, then immediately check.\n\nExpect in DB:\n  subscription_status = 'ACTIVE'\n  stripe_cancel_at_period_end = false\n  stripe_current_period_end = [date ~1 month away]\n  payment_failed_at = null\n\nUI: Status badge shows 'Active' (green). No cancellation notice."
+    },
+    {
+      "_id": "bc-sub-updated-cancel-at-period-end",
+      "colId": "vantro-billing-cancellation",
+      "containerId": "folder-bc-webhook",
+      "name": "⚡ subscription.updated cancel_at_period_end=true → ACTIVE + cancellation stored",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "sortNum": 2,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "TEST VIA STRIPE CUSTOMER PORTAL:\n1. Log in as OWNER with ACTIVE subscription.\n2. Go to Settings → Billing → Manage subscription.\n3. In Stripe Portal: cancel the subscription (choose 'at period end').\n4. Stripe fires customer.subscription.updated with cancel_at_period_end=true.\n\nExpect in DB:\n  subscription_status = 'ACTIVE'  ← still ACTIVE, not locked\n  stripe_cancel_at_period_end = true\n  stripe_current_period_end = [end of current billing period]\n\nUI: Status badge shows 'Cancelling' (amber). Cancellation notice with access-until date. 'Manage subscription' still visible."
+    },
+    {
+      "_id": "bc-sub-deleted",
+      "colId": "vantro-billing-cancellation",
+      "containerId": "folder-bc-webhook",
+      "name": "⚡ subscription.deleted → LOCKED + cancel fields reset",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "sortNum": 3,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "TEST VIA STRIPE CLI:\n  stripe trigger customer.subscription.deleted\n\nOR: Wait for period end after cancel_at_period_end=true — Stripe fires this automatically.\n\nExpect in DB:\n  subscription_status = 'LOCKED'\n  stripe_cancel_at_period_end = false\n  stripe_current_period_end = null\n\nUI: Locked banner shows. Billing tab shows 'Subscribe for £59/month'."
+    },
+    {
+      "_id": "bc-checkout-completed-clears-cancel",
+      "colId": "vantro-billing-cancellation",
+      "containerId": "folder-bc-webhook",
+      "name": "⚡ checkout.session.completed → ACTIVE + cancel fields cleared",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "sortNum": 4,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "TEST: After LOCKED state, click 'Subscribe for £59/month' and complete test checkout.\n\nExpect in DB:\n  subscription_status = 'ACTIVE'\n  stripe_cancel_at_period_end = false  ← reset\n  stripe_current_period_end = [new period end]\n  payment_failed_at = null\n\nUI: No banner, no cancellation notice. Status badge 'Active'."
+    },
+    {
+      "_id": "bc-active-cancel-has-write-access",
+      "colId": "vantro-billing-cancellation",
+      "containerId": "folder-bc-access",
+      "name": "ACTIVE + cancel_at_period_end=true still has full write access",
+      "url": "http://localhost:3000/api/customers",
+      "method": "POST",
+      "sortNum": 5,
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "body": { "type": "json", "raw": "{ \"name\": \"Access Test\" }" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" }
+      ],
+      "docs": "PRE-REQUISITE: subscription_status=ACTIVE, stripe_cancel_at_period_end=true (set via SQL or portal cancel).\n\nSQL: UPDATE \"Company\" SET stripe_cancel_at_period_end=true WHERE id='<id>';\n\nWrite access must still work. SubscriptionGuard only checks subscription_status, not cancel_at_period_end."
+    },
+    {
+      "_id": "bc-locked-cannot-write",
+      "colId": "vantro-billing-cancellation",
+      "containerId": "folder-bc-access",
+      "name": "LOCKED (after deletion) cannot write → 403",
+      "url": "http://localhost:3000/api/customers",
+      "method": "POST",
+      "sortNum": 6,
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "body": { "type": "json", "raw": "{ \"name\": \"Should Fail\" }" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "403" },
+        { "type": "res-body", "custom": "$.code", "action": "equal", "value": "SUBSCRIPTION_LOCKED" }
+      ],
+      "docs": "PRE-REQUISITE: subscription_status=LOCKED (after subscription.deleted webhook).\nExpect 403 + SUBSCRIPTION_LOCKED code."
+    },
+    {
+      "_id": "bc-companies-me-cancel-fields",
+      "colId": "vantro-billing-cancellation",
+      "containerId": "folder-bc-ui",
+      "name": "GET /companies/me returns cancel fields",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 7,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.stripe_cancel_at_period_end", "action": "isValue", "value": "" },
+        { "type": "res-body", "custom": "$.subscription_status", "action": "isValue", "value": "" }
+      ],
+      "docs": "Confirms the company response includes stripe_cancel_at_period_end and subscription_status.\nNote: stripe_customer_id and stripe_subscription_id must NOT be in the response (omitted by findForUser)."
+    },
+    {
+      "_id": "bc-engineer-no-billing-buttons",
+      "colId": "vantro-billing-cancellation",
+      "containerId": "folder-bc-ui",
+      "name": "ENGINEER — Billing tab shows no action buttons",
+      "url": "http://localhost:3000/api/users/me",
+      "method": "GET",
+      "sortNum": 8,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.role", "action": "equal", "value": "ENGINEER" }
+      ],
+      "docs": "Sign in as ENGINEER and open Settings → Billing.\nExpect: 'Ask the account owner to manage billing.' Only text, no Subscribe or Manage subscription buttons."
+    },
+    {
+      "_id": "bc-payment-failed-still-active",
+      "colId": "vantro-billing-cancellation",
+      "containerId": "folder-bc-ui",
+      "name": "⚡ invoice.payment_failed → payment_failed_at set, status unchanged",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "sortNum": 9,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "TEST VIA STRIPE CLI:\n  stripe trigger invoice.payment_failed\n\nExpect:\n  subscription_status = ACTIVE (unchanged)\n  payment_failed_at = [timestamp]\n\nUI: Payment failed warning box visible. 'Manage subscription' still shown (to allow payment method update)."
+    },
+    {
+      "_id": "bc-reactivate-after-cancel",
+      "colId": "vantro-billing-cancellation",
+      "containerId": "folder-bc-ui",
+      "name": "⚡ Reactivate after cancel_at_period_end via Stripe Portal",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "sortNum": 10,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "TEST:\n1. Cancel at period end via Stripe Portal.\n2. Confirm stripe_cancel_at_period_end=true and cancellation notice in UI.\n3. Click 'Manage subscription' → Stripe Portal.\n4. In portal: click 'Renew plan' or equivalent to reactivate.\n5. Stripe fires customer.subscription.updated with cancel_at_period_end=false.\n\nExpect:\n  stripe_cancel_at_period_end = false\n  subscription_status = ACTIVE\n\nUI: Back to 'Active' badge, no cancellation notice."
+    }
+  ]
+}

@@ -1,0 +1,186 @@
+{
+  "_id": "vantro-trial-scheduler",
+  "colName": "Vantro — Trial Scheduler",
+  "created": "2026-05-29T00:00:00.000Z",
+  "sortNum": 10,
+  "folders": [
+    { "_id": "folder-ts-setup", "name": "Setup (run first)", "containerId": "" },
+    { "_id": "folder-ts-trigger", "name": "Manual Trigger", "containerId": "" },
+    { "_id": "folder-ts-verify", "name": "Verify Results", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "ts-seed-expired-trial",
+      "colId": "vantro-trial-scheduler",
+      "containerId": "folder-ts-setup",
+      "name": "Seed — Set company to TRIAL with past trial_ends_at",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 1,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.id", "action": "isValue", "value": "" }
+      ],
+      "docs": "STEP 1 — Get your company ID. Then run this SQL directly in your DB to set an expired trial:\n\nUPDATE \"Company\"\nSET subscription_status = 'TRIAL', trial_ends_at = '2020-01-01T00:00:00Z'\nWHERE id = '<your-company-id>';\n\nThis simulates an expired trial. Sign back in after running the SQL."
+    },
+    {
+      "_id": "ts-trigger-expire",
+      "colId": "vantro-trial-scheduler",
+      "containerId": "folder-ts-trigger",
+      "name": "Trigger — POST /internal/trials/expire-now",
+      "url": "http://localhost:3000/api/internal/trials/expire-now",
+      "method": "POST",
+      "sortNum": 2,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.locked", "action": "isValue", "value": "" }
+      ],
+      "docs": "Manually triggers the trial expiry logic. Only works when NODE_ENV != 'production'. Returns { locked: N } where N is the number of companies that were just locked. If you seeded one expired trial in Setup, expect locked=1."
+    },
+    {
+      "_id": "ts-verify-locked",
+      "colId": "vantro-trial-scheduler",
+      "containerId": "folder-ts-verify",
+      "name": "Verify — company is now LOCKED",
+      "url": "http://localhost:3000/api/companies/me",
+      "method": "GET",
+      "sortNum": 3,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.subscription_status", "action": "equal", "value": "LOCKED" }
+      ],
+      "docs": "After running the manual trigger, the seeded company should now have subscription_status=LOCKED. GET is allowed even for LOCKED companies (SubscriptionGuard only blocks writes)."
+    },
+    {
+      "_id": "ts-verify-write-blocked",
+      "colId": "vantro-trial-scheduler",
+      "containerId": "folder-ts-verify",
+      "name": "Verify — LOCKED company write blocked → 403",
+      "url": "http://localhost:3000/api/customers",
+      "method": "POST",
+      "sortNum": 4,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Should Be Blocked\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "403" },
+        { "type": "res-body", "custom": "$.code", "action": "equal", "value": "SUBSCRIPTION_LOCKED" }
+      ],
+      "docs": "Confirms that a newly-LOCKED company is immediately blocked from write operations by SubscriptionGuard."
+    },
+    {
+      "_id": "ts-idempotent",
+      "colId": "vantro-trial-scheduler",
+      "containerId": "folder-ts-verify",
+      "name": "Verify — trigger again is idempotent → locked=0",
+      "url": "http://localhost:3000/api/internal/trials/expire-now",
+      "method": "POST",
+      "sortNum": 5,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.locked", "action": "equal", "value": "0" }
+      ],
+      "docs": "Run the trigger a second time. The company is already LOCKED so Prisma's WHERE clause (subscription_status=TRIAL) excludes it. Expect locked=0. Confirms the cron is idempotent."
+    },
+    {
+      "_id": "ts-active-untouched",
+      "colId": "vantro-trial-scheduler",
+      "containerId": "folder-ts-verify",
+      "name": "Verify — ACTIVE company with past trial_ends_at stays ACTIVE",
+      "url": "http://localhost:3000/api/internal/trials/expire-now",
+      "method": "POST",
+      "sortNum": 6,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.locked", "action": "equal", "value": "0" }
+      ],
+      "docs": "PRE-REQUISITE: Set a company to subscription_status=ACTIVE with trial_ends_at in the past via SQL:\n\nUPDATE \"Company\" SET subscription_status='ACTIVE', trial_ends_at='2020-01-01T00:00:00Z' WHERE id='<id>';\n\nRun expire-now — locked must be 0. The WHERE clause filters subscription_status=TRIAL only, so ACTIVE companies are never touched."
+    },
+    {
+      "_id": "ts-null-trial-ends-at",
+      "colId": "vantro-trial-scheduler",
+      "containerId": "folder-ts-verify",
+      "name": "Verify — TRIAL with null trial_ends_at stays TRIAL",
+      "url": "http://localhost:3000/api/internal/trials/expire-now",
+      "method": "POST",
+      "sortNum": 7,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.locked", "action": "equal", "value": "0" }
+      ],
+      "docs": "PRE-REQUISITE: Set a company to subscription_status=TRIAL with trial_ends_at=NULL:\n\nUPDATE \"Company\" SET subscription_status='TRIAL', trial_ends_at=NULL WHERE id='<id>';\n\nRun expire-now — locked must be 0. Postgres evaluates NULL < now() as NULL (not true), so { lt: now } naturally excludes null rows."
+    },
+    {
+      "_id": "ts-future-trial",
+      "colId": "vantro-trial-scheduler",
+      "containerId": "folder-ts-verify",
+      "name": "Verify — TRIAL with future trial_ends_at stays TRIAL",
+      "url": "http://localhost:3000/api/internal/trials/expire-now",
+      "method": "POST",
+      "sortNum": 8,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.locked", "action": "equal", "value": "0" }
+      ],
+      "docs": "PRE-REQUISITE: Set a company to subscription_status=TRIAL with a future trial_ends_at:\n\nUPDATE \"Company\" SET subscription_status='TRIAL', trial_ends_at='2099-01-01T00:00:00Z' WHERE id='<id>';\n\nRun expire-now — locked must be 0. trial_ends_at is in the future so { lt: now } is false."
+    },
+    {
+      "_id": "ts-production-blocked",
+      "colId": "vantro-trial-scheduler",
+      "containerId": "folder-ts-verify",
+      "name": "Verify — endpoint blocked in production → 403",
+      "url": "http://localhost:3000/api/internal/trials/expire-now",
+      "method": "POST",
+      "sortNum": 9,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "403" }
+      ],
+      "docs": "Only run this against a production or production-like deployment where NODE_ENV=production. The endpoint must return 403 and never execute the expiry logic."
+    }
+  ]
+}

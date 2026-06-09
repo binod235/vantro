@@ -1,0 +1,89 @@
+{
+  "_id": "vantro-billing-portal",
+  "colName": "Vantro — Billing Portal",
+  "created": "2026-05-30T00:00:00.000Z",
+  "sortNum": 14,
+  "folders": [
+    { "_id": "folder-bp-portal", "name": "Customer Portal", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "bp-owner-active-portal",
+      "colId": "vantro-billing-portal",
+      "containerId": "folder-bp-portal",
+      "name": "OWNER ACTIVE + stripe_customer_id → portal session created",
+      "url": "http://localhost:3000/api/billing/create-portal-session",
+      "method": "POST",
+      "sortNum": 1,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.url", "action": "contains", "value": "billing.stripe.com" }
+      ],
+      "docs": "PRE-REQUISITE: Signed in as OWNER. Company must have subscription_status=ACTIVE and a stripe_customer_id set (happens automatically after completing Stripe checkout).\n\nExpect 201 + { url: 'https://billing.stripe.com/...' }.\nOpen that URL in a browser — it shows the Stripe Customer Portal where the user can cancel, update payment method, and view invoices."
+    },
+    {
+      "_id": "bp-engineer-403",
+      "colId": "vantro-billing-portal",
+      "containerId": "folder-bp-portal",
+      "name": "ENGINEER → 403",
+      "url": "http://localhost:3000/api/billing/create-portal-session",
+      "method": "POST",
+      "sortNum": 2,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "403" }
+      ],
+      "docs": "PRE-REQUISITE: Signed in as ENGINEER.\nRolesGuard must reject with 403. Engineers cannot open the billing portal."
+    },
+    {
+      "_id": "bp-no-customer-400",
+      "colId": "vantro-billing-portal",
+      "containerId": "folder-bp-portal",
+      "name": "OWNER with no stripe_customer_id → 400",
+      "url": "http://localhost:3000/api/billing/create-portal-session",
+      "method": "POST",
+      "sortNum": 3,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "400" },
+        { "type": "res-body", "custom": "$.message", "action": "equal", "value": "No Stripe customer found for this company." }
+      ],
+      "docs": "PRE-REQUISITE: Sign in as OWNER whose company has never completed checkout:\n\nSQL: UPDATE \"Company\" SET stripe_customer_id=NULL WHERE id='<id>';\n\nExpect 400 with 'No Stripe customer found for this company.' This happens for TRIAL companies that have never clicked Subscribe."
+    },
+    {
+      "_id": "bp-unauth-401",
+      "colId": "vantro-billing-portal",
+      "containerId": "folder-bp-portal",
+      "name": "Unauthenticated → 401",
+      "url": "http://localhost:3000/api/billing/create-portal-session",
+      "method": "POST",
+      "sortNum": 4,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "in", "value": "401,403" }
+      ],
+      "docs": "No session cookie. SessionGuard rejects before the controller is reached."
+    },
+    {
+      "_id": "bp-return-url",
+      "colId": "vantro-billing-portal",
+      "containerId": "folder-bp-portal",
+      "name": "Portal return_url points to /dashboard/settings",
+      "url": "http://localhost:3000/api/billing/create-portal-session",
+      "method": "POST",
+      "sortNum": 5,
+      "headers": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.url", "action": "isValue", "value": "" }
+      ],
+      "docs": "After creating the portal session, open the returned URL in a browser and log into the Stripe portal.\nThen click 'Return to Vantro' (or equivalent) — you should land at /dashboard/settings.\n\nNote: FRONTEND_URL in api/.env must be set correctly. Locally: http://localhost:3001"
+    }
+  ]
+}

@@ -1,0 +1,708 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  OWNER
+  ENGINEER
+}
+
+enum JobStatus {
+  QUOTED
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  INVOICED
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  LOCKED
+}
+
+enum EnquirySource {
+  PHONE
+  EMAIL
+  WEBSITE
+  REFERRAL
+  WALKIN
+  OTHER
+}
+
+enum EnquiryStatus {
+  NEW
+  CONTACTED
+  QUOTED
+  CONVERTED
+  DONE
+  REJECTED
+}
+
+enum IntakeMethod {
+  MANUAL
+  EMAIL
+  DIRECT_LINK
+}
+
+enum BillingRate {
+  STANDARD
+  OVERTIME
+  DOUBLE_TIME
+  UNPAID
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PART_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum InvoiceType {
+  STANDARD
+  DEPOSIT
+  PROGRESS
+  FINAL
+}
+
+enum InvoiceSourceType {
+  MANUAL
+  JOB
+  QUOTE
+}
+
+enum QuoteInvoiceMode {
+  ENTIRE_QUOTE
+  SELECTED_LINE_ITEMS
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum VatType {
+  STANDARD
+  REVERSE_CHARGE
+  EXEMPT
+  ZERO_RATED
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  INVOICED
+  EXPIRED
+  CANCELLED
+}
+
+enum GasCertType {
+  CP12
+  BOILER_SERVICE
+  GAS_WARNING
+  INSTALLATION
+}
+
+enum GasCertStatus {
+  DRAFT
+  COMPLETE
+  SENT
+}
+
+enum TodoPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TodoStatus {
+  OPEN
+  DONE
+}
+
+// ─── Better Auth tables (camelCase as required by Better Auth) ───────────────
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  role              Role      @default(ENGINEER)
+  companyId         String?
+  invite_token      String?   @unique
+  invite_expires_at DateTime?
+  calendar_colour   String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  company              Company?               @relation(fields: [companyId], references: [id])
+  sessions             Session[]
+  accounts             Account[]
+  timesheets            Timesheet[]
+  approved_timesheets   Timesheet[] @relation("TimesheetApprover")
+  gasCertificates       GasSafetyCertificate[]
+  assignedJobs         Job[]                  @relation("EngineerJobs")
+  assigned_enquiries   Enquiry[]              @relation("EnquiryAssignee")
+  created_todos        Todo[]                 @relation("TodoCreator")
+  assigned_todos       Todo[]                 @relation("TodoAssignee")
+  completed_todos      Todo[]                 @relation("TodoCompleter")
+  activeTimers         ActiveTimer[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
+}
+
+// ─── Application tables ──────────────────────────────────────────────────────
+
+model Company {
+  id                     String             @id @default(cuid())
+  name                   String
+  slug                   String?            @unique
+  subscription_status    SubscriptionStatus @default(TRIAL)
+  trial_ends_at          DateTime
+  stripe_customer_id     String?
+  stripe_subscription_id String?
+  payment_failed                Boolean   @default(false)
+  payment_failed_at             DateTime?
+  stripe_cancel_at_period_end   Boolean   @default(false)
+  stripe_current_period_end     DateTime?
+  trial_reminder_4_days_sent_at DateTime?
+  trial_reminder_1_day_sent_at  DateTime?
+  standard_rate_pence        Int                @default(0)
+  overtime_rate_pence        Int                @default(0)
+  double_time_rate_pence     Int                @default(0)
+
+  // Business identity
+  vat_number          String?
+  vat_registered      Boolean  @default(false)
+  default_vat_rate    Float    @default(20.0)
+  cis_registered      Boolean  @default(false)
+  cis_number          String?
+
+  // Logo
+  logo_url            String?
+
+  // Invoice settings
+  invoice_prefix        String  @default("INV")
+  invoice_next_number   Int     @default(1)
+  default_payment_terms String? @default("Payment due within 30 days")
+  default_invoice_notes String?
+
+  quote_prefix      String  @default("QUO")
+  quote_next_number Int     @default(1)
+  quote_expiry_days Int     @default(30)
+
+  gas_cert_next_number Int @default(1)
+
+ // Invoice design / branding
+  invoice_template          String  @default("MODERN")
+  invoice_accent_colour     String  @default("#1d4ed8")
+  invoice_show_logo         Boolean @default(true)
+  invoice_show_reference    Boolean @default(true)
+  invoice_show_site_address Boolean @default(true)
+  invoice_show_payment_info Boolean @default(true)
+ 
+
+  // Bank details
+  bank_name           String?
+  bank_account_name   String?
+  bank_sort_code      String?
+  bank_account_number String?
+
+  // Business address
+  address_line1 String?
+  address_line2 String?
+  city          String?
+  county        String?
+  postcode      String?
+  phone         String?
+  website       String?
+
+  created_at                 DateTime           @default(now())
+  updated_at                 DateTime           @updatedAt
+
+  users            User[]
+  customers        Customer[]
+  jobs             Job[]
+  quotes           Quote[]
+  invoices         Invoice[]
+  invoicePayments  InvoicePayment[]
+  suppliers        Supplier[]
+  subcontractors   Subcontractor[]
+  enquiries        Enquiry[]
+  timesheets       Timesheet[]
+  todos            Todo[]
+  gasCertificates  GasSafetyCertificate[]
+  activeTimers     ActiveTimer[]
+}
+
+model Customer {
+  id            String   @id @default(cuid())
+  company_id    String
+  name          String
+  email         String?
+  phone         String?
+  address_line1 String?
+  address_line2 String?
+  city          String?
+  postcode      String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  company         Company                @relation(fields: [company_id], references: [id])
+  jobs            Job[]
+  quotes          Quote[]
+  invoices        Invoice[]
+  gasCertificates GasSafetyCertificate[]
+  enquiries       Enquiry[]
+}
+
+model Job {
+  id               String    @id @default(cuid())
+  company_id       String
+  customer_id      String
+  engineer_id      String?
+  title            String
+  description      String?
+  status           JobStatus @default(QUOTED)
+  scheduled_at     DateTime?
+  duration_minutes Int?
+  schedule_note    String?
+  notes            String?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  company               Company                @relation(fields: [company_id], references: [id])
+  customer              Customer               @relation(fields: [customer_id], references: [id])
+  engineer              User?                  @relation("EngineerJobs", fields: [engineer_id], references: [id])
+  quotes                Quote[]
+  invoices              Invoice[]
+  subcontractorPayments SubcontractorPayment[]
+  gasCertificates       GasSafetyCertificate[]
+  timesheets            Timesheet[]
+  todos                 Todo[]
+  activeTimers          ActiveTimer[]
+}
+
+model Quote {
+  id           String      @id @default(cuid())
+  company_id   String
+  customer_id  String?
+  job_id       String?
+  quote_number String
+  status       QuoteStatus @default(DRAFT)
+
+  line_items   Json     @default("[]")
+
+  subtotal_pence           Int     @default(0)
+  vat_amount_pence         Int     @default(0)
+  reverse_charge_vat_pence Int     @default(0)
+  total_pence              Int     @default(0)
+  is_reverse_charge        Boolean @default(false)
+  reverse_charge_wording   String?
+
+  issue_date   DateTime?
+  expiry_date  DateTime?
+
+  reference    String?
+  notes        String?
+
+  amount_pence Int @default(0)
+
+  acceptance_token String?  @unique
+  accepted_at      DateTime?
+  rejected_at      DateTime?
+  rejection_reason String?
+
+  last_sent_at DateTime?
+
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  company   Company   @relation(fields: [company_id], references: [id])
+  customer  Customer? @relation(fields: [customer_id], references: [id])
+  job       Job?      @relation(fields: [job_id], references: [id])
+  invoices  Invoice[]
+
+  @@unique([company_id, quote_number])
+  @@index([company_id])
+  @@index([company_id, status])
+  @@index([acceptance_token])
+}
+
+// Amounts stored in pence (integers) — never floats. See CLAUDE.md.
+model Invoice {
+  id                       String             @id @default(cuid())
+  company_id               String
+  customer_id              String
+  job_id                   String?
+  quote_id                 String?
+  invoice_number           String
+  status                   InvoiceStatus      @default(DRAFT)
+  invoice_type             InvoiceType        @default(STANDARD)
+  source_type              InvoiceSourceType?
+  quote_invoice_mode       QuoteInvoiceMode?
+  quote_percentage         Int?
+  fixed_amount_pence       Int?
+  line_items               Json               @default("[]")
+  subtotal_pence           Int                @default(0)
+  vat_amount_pence         Int                @default(0)
+  reverse_charge_vat_pence Int                @default(0)
+  total_pence              Int                @default(0)
+  amount_paid_pence        Int                @default(0)
+  amount_due_pence         Int                @default(0)
+  due_date                 DateTime?
+  issue_date               DateTime           @default(now())
+  paid_date                DateTime?
+  payment_method           String?
+  is_reverse_charge        Boolean            @default(false)
+  reverse_charge_wording   String?
+  notes                    String?
+  created_at               DateTime           @default(now())
+  updated_at               DateTime           @updatedAt
+
+  company  Company          @relation(fields: [company_id], references: [id])
+  customer Customer         @relation(fields: [customer_id], references: [id])
+  job      Job?             @relation(fields: [job_id], references: [id])
+  quote    Quote?           @relation(fields: [quote_id], references: [id])
+  payments InvoicePayment[]
+
+  @@unique([company_id, invoice_number])
+  @@index([company_id])
+  @@index([company_id, status])
+}
+
+model InvoicePayment {
+  id             String   @id @default(cuid())
+  company_id     String
+  invoice_id     String
+  payment_date   DateTime
+  amount_pence   Int
+  payment_method String?
+  reference      String?
+  notes          String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  company Company @relation(fields: [company_id], references: [id])
+  invoice Invoice @relation(fields: [invoice_id], references: [id])
+
+  @@index([company_id])
+  @@index([company_id, invoice_id])
+}
+
+model Subcontractor {
+  id              String   @id @default(cuid())
+  company_id      String
+  name            String
+  utr_number      String?
+  is_cis_verified Boolean  @default(false)
+  deduction_rate  Int      @default(20)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  company  Company                @relation(fields: [company_id], references: [id])
+  payments SubcontractorPayment[]
+}
+
+// CIS: deduction applied to labour_amount_pence ONLY — never to materials. See CLAUDE.md.
+model SubcontractorPayment {
+  id                     String   @id @default(cuid())
+  job_id                 String
+  subcontractor_id       String
+  labour_amount_pence    Int
+  materials_amount_pence Int      @default(0)
+  deduction_rate         Int
+  deduction_amount_pence Int
+  net_payment_pence      Int
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  job           Job           @relation(fields: [job_id], references: [id])
+  subcontractor Subcontractor @relation(fields: [subcontractor_id], references: [id])
+}
+
+model GasSafetyCertificate {
+  id          String        @id @default(cuid())
+  company_id  String
+  job_id      String?
+  customer_id String?
+  engineer_id String?
+
+  cert_type   GasCertType
+  status      GasCertStatus @default(DRAFT)
+  cert_number String
+
+  inspection_date   DateTime
+  property_address  String?
+  property_city     String?
+  property_postcode String?
+
+  engineer_name   String?
+  gas_safe_number String?
+
+  data          Json      @default("{}")
+  notes         String?
+  next_due_date DateTime?
+  last_sent_at  DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company  Company   @relation(fields: [company_id], references: [id])
+  job      Job?      @relation(fields: [job_id], references: [id])
+  customer Customer? @relation(fields: [customer_id], references: [id])
+  engineer User?     @relation(fields: [engineer_id], references: [id])
+
+  @@unique([company_id, cert_number])
+  @@index([company_id])
+  @@index([company_id, cert_type])
+  @@index([company_id, status])
+}
+
+model Timesheet {
+  id         String  @id @default(cuid())
+  company_id String
+  company    Company @relation(fields: [company_id], references: [id])
+
+  user_id String
+  user    User   @relation(fields: [user_id], references: [id])
+
+  job_id String?
+  job    Job?    @relation(fields: [job_id], references: [id])
+
+  date             DateTime
+  start_time       DateTime
+  finish_time      DateTime
+
+  break_minutes    Int         @default(0)
+  duration_minutes Int
+
+  billing_rate      BillingRate @default(STANDARD)
+  hourly_rate_pence Int
+
+  total_pence Int
+
+  notes          String?
+  is_approved    Boolean   @default(false)
+  approved_by_id String?
+  approved_by    User?     @relation("TimesheetApprover", fields: [approved_by_id], references: [id])
+  approved_at    DateTime?
+
+  clock_in_at       DateTime?
+  clock_out_at      DateTime?
+  clock_in_lat      Float?
+  clock_in_lng      Float?
+  clock_in_address  String?
+  clock_out_lat     Float?
+  clock_out_lng     Float?
+  clock_out_address String?
+  is_timer_entry    Boolean   @default(false)
+
+  clock_in_flag     String?
+  clock_out_flag    String?
+  clock_in_reason   String?
+  clock_out_reason  String?
+  clock_in_note     String?
+  clock_out_note    String?
+  requires_approval Boolean   @default(false)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([company_id])
+  @@index([user_id])
+  @@index([job_id])
+}
+
+model ActiveTimer {
+  id         String   @id @default(cuid())
+  company_id String
+  user_id    String
+  job_id     String
+  started_at DateTime @default(now())
+  lat        Float?
+  lng        Float?
+  address    String?
+
+  clock_in_flag   String?
+  clock_in_reason String?
+  clock_in_note   String?
+
+  company Company @relation(fields: [company_id], references: [id])
+  user    User    @relation(fields: [user_id], references: [id])
+  job     Job     @relation(fields: [job_id], references: [id])
+
+  @@unique([user_id, job_id])
+  @@index([company_id])
+}
+
+model Supplier {
+  id             String   @id @default(cuid())
+  company_id     String
+  name           String
+  contact_name   String?
+  email          String?
+  phone          String?
+  mobile         String?
+  address_line1  String?
+  address_line2  String?
+  city           String?
+  county         String?
+  postcode       String?
+  vat_number     String?
+  account_number String?
+  website        String?
+  notes          String?
+  is_archived    Boolean  @default(false)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  company        Company         @relation(fields: [company_id], references: [id])
+  bills          Bill[]
+  purchaseOrders PurchaseOrder[]
+
+  @@index([company_id])
+}
+
+model Bill {
+  id          String   @id @default(cuid())
+  company_id  String
+  supplier_id String
+  created_at  DateTime @default(now())
+
+  supplier Supplier @relation(fields: [supplier_id], references: [id])
+}
+
+model PurchaseOrder {
+  id          String   @id @default(cuid())
+  company_id  String
+  supplier_id String
+  created_at  DateTime @default(now())
+
+  supplier Supplier @relation(fields: [supplier_id], references: [id])
+}
+
+model Enquiry {
+  id           String        @id @default(cuid())
+  company_id   String
+  company      Company       @relation(fields: [company_id], references: [id])
+
+  enquiry_no   Int
+
+  customer_id    String?
+  customer       Customer?   @relation(fields: [customer_id], references: [id])
+
+  assigned_to_id String?
+  assigned_to    User?       @relation("EnquiryAssignee", fields: [assigned_to_id], references: [id])
+
+  name          String
+  phone         String?
+  email         String?
+
+  address_line1 String?
+  address_line2 String?
+  city          String?
+  county        String?
+  postcode      String?
+
+  received_date  DateTime      @default(now())
+  source         EnquirySource @default(PHONE)
+  status         EnquiryStatus @default(NEW)
+  intake_method  IntakeMethod  @default(MANUAL)
+
+  notes         String?
+
+  converted_job_id String?   @unique
+  converted_at     DateTime?
+
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@unique([company_id, enquiry_no])
+  @@index([company_id])
+}
+
+model Todo {
+  id          String       @id @default(cuid())
+  company_id  String
+  company     Company      @relation(fields: [company_id], references: [id])
+
+  created_by_id String
+  created_by    User       @relation("TodoCreator", fields: [created_by_id], references: [id])
+
+  assigned_to_id String?
+  assigned_to    User?     @relation("TodoAssignee", fields: [assigned_to_id], references: [id])
+
+  job_id String?
+  job    Job?    @relation(fields: [job_id], references: [id])
+
+  title       String
+  description String?
+  priority    TodoPriority @default(MEDIUM)
+  status      TodoStatus   @default(OPEN)
+
+  due_date   DateTime?
+  done_at    DateTime?
+  done_by_id String?
+  done_by    User?     @relation("TodoCompleter", fields: [done_by_id], references: [id])
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([company_id])
+  @@index([assigned_to_id])
+}

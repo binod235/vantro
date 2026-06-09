@@ -1,0 +1,178 @@
+{
+  "_id": "vantro-billing-stripe",
+  "colName": "Vantro — Billing & Stripe",
+  "created": "2026-05-29T00:00:00.000Z",
+  "sortNum": 12,
+  "folders": [
+    { "_id": "folder-bs-checkout", "name": "Checkout Session", "containerId": "" },
+    { "_id": "folder-bs-webhook", "name": "Webhooks", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "bs-owner-trial-checkout",
+      "colId": "vantro-billing-stripe",
+      "containerId": "folder-bs-checkout",
+      "name": "OWNER — TRIAL company — create checkout session → 201 + url",
+      "url": "http://localhost:3000/api/billing/create-checkout-session",
+      "method": "POST",
+      "sortNum": 1,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.url", "action": "contains", "value": "https://checkout.stripe.com" }
+      ],
+      "docs": "PRE-REQUISITE: Signed in as OWNER. Company subscription_status=TRIAL. STRIPE_SECRET_KEY and STRIPE_PRICE_ID must be set in api/.env.\n\nExpects 201 with { url: 'https://checkout.stripe.com/...' }. Open that URL in a browser to complete the Stripe test checkout."
+    },
+    {
+      "_id": "bs-owner-locked-checkout",
+      "colId": "vantro-billing-stripe",
+      "containerId": "folder-bs-checkout",
+      "name": "OWNER — LOCKED company — create checkout session → 201 + url",
+      "url": "http://localhost:3000/api/billing/create-checkout-session",
+      "method": "POST",
+      "sortNum": 2,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.url", "action": "contains", "value": "checkout.stripe.com" }
+      ],
+      "docs": "PRE-REQUISITE: SQL: UPDATE \"Company\" SET subscription_status='LOCKED' WHERE id='<id>';\n\nLOCKED companies can still subscribe. Expect 201 + checkout URL."
+    },
+    {
+      "_id": "bs-engineer-checkout-403",
+      "colId": "vantro-billing-stripe",
+      "containerId": "folder-bs-checkout",
+      "name": "ENGINEER — create checkout session → 403",
+      "url": "http://localhost:3000/api/billing/create-checkout-session",
+      "method": "POST",
+      "sortNum": 3,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "403" }
+      ],
+      "docs": "PRE-REQUISITE: Signed in as ENGINEER role. RolesGuard should reject with 403. ENGINEER must never be able to start a checkout."
+    },
+    {
+      "_id": "bs-active-checkout-400",
+      "colId": "vantro-billing-stripe",
+      "containerId": "folder-bs-checkout",
+      "name": "ACTIVE company — create checkout session → 400",
+      "url": "http://localhost:3000/api/billing/create-checkout-session",
+      "method": "POST",
+      "sortNum": 4,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "400" },
+        { "type": "res-body", "custom": "$.message", "action": "equal", "value": "Company already has an active subscription." }
+      ],
+      "docs": "PRE-REQUISITE: SQL: UPDATE \"Company\" SET subscription_status='ACTIVE' WHERE id='<id>';\nSign in as OWNER. Expect 400 with message 'Company already has an active subscription.'"
+    },
+    {
+      "_id": "bs-unauth-checkout",
+      "colId": "vantro-billing-stripe",
+      "containerId": "folder-bs-checkout",
+      "name": "Unauthenticated — create checkout session → 401",
+      "url": "http://localhost:3000/api/billing/create-checkout-session",
+      "method": "POST",
+      "sortNum": 5,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "in", "value": "401,403" }
+      ],
+      "docs": "No session cookie. SessionGuard should reject before BillingController is reached. Expect 401 (or 403 depending on SessionGuard behaviour)."
+    },
+    {
+      "_id": "bs-webhook-invalid-sig",
+      "colId": "vantro-billing-stripe",
+      "containerId": "folder-bs-webhook",
+      "name": "Webhook — invalid signature → 400",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "sortNum": 6,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "stripe-signature", "value": "t=1234,v1=bad_signature" }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"type\": \"checkout.session.completed\",\n  \"data\": { \"object\": {} }\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "400" },
+        { "type": "res-body", "custom": "$.message", "action": "equal", "value": "Invalid Stripe signature." }
+      ],
+      "docs": "Sends a fake/invalid stripe-signature header. Stripe constructEvent should reject it and the endpoint must return 400. No session required — this route is @Public()."
+    },
+    {
+      "_id": "bs-webhook-stripe-cli",
+      "colId": "vantro-billing-stripe",
+      "containerId": "folder-bs-webhook",
+      "name": "⚡ Stripe CLI — checkout.session.completed (read docs)",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "sortNum": 7,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "USE STRIPE CLI — do not send this manually.\n\nLocal webhook testing with Stripe CLI:\n\n1. Install: https://stripe.com/docs/stripe-cli\n2. Login: stripe login\n3. Forward events to local server:\n   stripe listen --forward-to http://localhost:3000/api/billing/webhook\n4. Copy the webhook signing secret from Stripe CLI output into api/.env:\n   STRIPE_WEBHOOK_SECRET=whsec_...\n5. From the UI, click 'Subscribe for £59/month' as an OWNER.\n6. Complete checkout in Stripe test mode (use card 4242 4242 4242 4242, any future date, any CVC).\n7. Confirm Stripe CLI shows 'checkout.session.completed' forwarded with 200 response.\n8. Run GET /api/companies/me — confirm subscription_status=ACTIVE.\n9. Check api logs for: 'Company <id> activated after successful checkout'\n\nAlternative: trigger test events:\n   stripe trigger checkout.session.completed"
+    },
+    {
+      "_id": "bs-webhook-sub-deleted",
+      "colId": "vantro-billing-stripe",
+      "containerId": "folder-bs-webhook",
+      "name": "⚡ Stripe CLI — customer.subscription.deleted (read docs)",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "sortNum": 8,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "USE STRIPE CLI:\n\n1. After completing checkout (company is ACTIVE with a stripe_subscription_id).\n2. Cancel the subscription in Stripe test dashboard, or trigger:\n   stripe trigger customer.subscription.deleted\n3. Confirm api logs: 'Company <id> locked due to subscription deletion'\n4. Run GET /api/companies/me — confirm subscription_status=LOCKED.\n5. SubscriptionGuard will block all write requests for that company."
+    },
+    {
+      "_id": "bs-webhook-payment-failed",
+      "colId": "vantro-billing-stripe",
+      "containerId": "folder-bs-webhook",
+      "name": "⚡ Stripe CLI — invoice.payment_failed (read docs)",
+      "url": "http://localhost:3000/api/billing/webhook",
+      "method": "POST",
+      "sortNum": 9,
+      "created": "2026-05-29T00:00:00.000Z",
+      "modified": "2026-05-29T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [],
+      "docs": "USE STRIPE CLI:\n\n   stripe trigger invoice.payment_failed\n\nConfirm api logs: 'payment_failed_at updated for company <id>'\nThe company is NOT immediately locked — subscription_status stays unchanged.\npayment_failed_at is set to the current timestamp for future dunning/reminder logic (Step H)."
+    }
+  ]
+}

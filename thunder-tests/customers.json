@@ -1,0 +1,112 @@
+{
+  "_id": "vantro-customers",
+  "colName": "Vantro — Customers",
+  "created": "2026-05-27T00:00:00.000Z",
+  "sortNum": 3,
+  "folders": [
+    { "_id": "folder-customers", "name": "Customers", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "customer-create",
+      "colId": "vantro-customers",
+      "containerId": "folder-customers",
+      "name": "Create Customer",
+      "url": "http://localhost:3000/api/customers",
+      "method": "POST",
+      "sortNum": 1,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"John Davies\",\n  \"email\": \"john@davies.co.uk\",\n  \"phone\": \"07700 900123\",\n  \"address_line1\": \"14 Oak Street\",\n  \"address_line2\": \"\",\n  \"city\": \"Manchester\",\n  \"postcode\": \"M1 1AA\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.name", "action": "equal", "value": "John Davies" },
+        { "type": "res-body", "custom": "$.company_id", "action": "isValue", "value": "" }
+      ],
+      "docs": "Creates a new customer in the caller's company. OWNER role required. Returns 403 if called by an engineer. Postcode is validated against UK format."
+    },
+    {
+      "_id": "customer-list",
+      "colId": "vantro-customers",
+      "containerId": "folder-customers",
+      "name": "List Customers",
+      "url": "http://localhost:3000/api/customers",
+      "method": "GET",
+      "sortNum": 2,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$", "action": "isArray", "value": "" }
+      ],
+      "docs": "Returns all customers in the caller's company, sorted by name. Available to both OWNER and ENGINEER. Results are always scoped to the caller's company — never returns customers from another company."
+    },
+    {
+      "_id": "customer-get-one",
+      "colId": "vantro-customers",
+      "containerId": "folder-customers",
+      "name": "Get Customer by ID",
+      "url": "http://localhost:3000/api/customers/REPLACE_WITH_CUSTOMER_ID",
+      "method": "GET",
+      "sortNum": 3,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.id", "action": "isValue", "value": "" }
+      ],
+      "docs": "Returns a single customer by ID. Returns 404 if the customer does not exist in this company — never leaks customers from other companies. Available to both OWNER and ENGINEER."
+    },
+    {
+      "_id": "customer-update",
+      "colId": "vantro-customers",
+      "containerId": "folder-customers",
+      "name": "Update Customer",
+      "url": "http://localhost:3000/api/customers/REPLACE_WITH_CUSTOMER_ID",
+      "method": "PATCH",
+      "sortNum": 4,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"John Davies (Updated)\",\n  \"phone\": \"07700 900999\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "200" },
+        { "type": "res-body", "custom": "$.name", "action": "equal", "value": "John Davies (Updated)" }
+      ],
+      "docs": "Updates any field on a customer. All fields are optional — only include fields to change. OWNER role required. Returns 404 if the customer does not belong to the caller's company."
+    },
+    {
+      "_id": "customer-delete",
+      "colId": "vantro-customers",
+      "containerId": "folder-customers",
+      "name": "Delete Customer",
+      "url": "http://localhost:3000/api/customers/REPLACE_WITH_CUSTOMER_ID",
+      "method": "DELETE",
+      "sortNum": 5,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "body": { "type": "none", "raw": "" },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "204" }
+      ],
+      "docs": "Permanently deletes a customer. OWNER role required. Returns 409 if the customer has one or more jobs — delete all jobs first. Returns 404 if the customer does not belong to the caller's company."
+    }
+  ]
+}

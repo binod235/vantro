@@ -1,0 +1,72 @@
+{
+  "_id": "vantro-register",
+  "colName": "Vantro — Register",
+  "created": "2026-05-27T00:00:00.000Z",
+  "sortNum": 0,
+  "folders": [
+    { "_id": "folder-register", "name": "Registration", "containerId": "" }
+  ],
+  "requests": [
+    {
+      "_id": "register-success",
+      "colId": "vantro-register",
+      "containerId": "folder-register",
+      "name": "Register new owner + company",
+      "url": "http://localhost:3000/api/register",
+      "method": "POST",
+      "sortNum": 1,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Joe Bloggs\",\n  \"email\": \"joe@bloggs-plumbing.co.uk\",\n  \"password\": \"password123\",\n  \"company_name\": \"Bloggs Plumbing Ltd\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "201" },
+        { "type": "res-body", "custom": "$.message", "action": "equal", "value": "Account created" }
+      ]
+    },
+    {
+      "_id": "register-duplicate",
+      "colId": "vantro-register",
+      "containerId": "folder-register",
+      "name": "Register duplicate email (expect 409)",
+      "url": "http://localhost:3000/api/register",
+      "method": "POST",
+      "sortNum": 2,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Joe Bloggs\",\n  \"email\": \"joe@bloggs-plumbing.co.uk\",\n  \"password\": \"password123\",\n  \"company_name\": \"Bloggs Plumbing Ltd\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "409" }
+      ]
+    },
+    {
+      "_id": "register-validation",
+      "colId": "vantro-register",
+      "containerId": "folder-register",
+      "name": "Register missing fields (expect 400)",
+      "url": "http://localhost:3000/api/register",
+      "method": "POST",
+      "sortNum": 3,
+      "created": "2026-05-27T00:00:00.000Z",
+      "modified": "2026-05-27T00:00:00.000Z",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"email\": \"test@example.co.uk\"\n}"
+      },
+      "tests": [
+        { "type": "res-code", "custom": "", "action": "equal", "value": "400" }
+      ]
+    }
+  ]
+}

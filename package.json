@@ -1,0 +1,21 @@
+{
+  "name": "vantro",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "api",
+    "web"
+  ],
+  "scripts": {
+    "dev:api": "npm run start:dev --workspace=api",
+    "dev:web": "npm run dev --workspace=web",
+    "build:api": "npm run build --workspace=api",
+    "build:web": "npm run build --workspace=web",
+    "lint": "npm run lint --workspaces",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json}\" --ignore-path .gitignore"
+  },
+  "devDependencies": {
+    "@nestjs/platform-express": "^11.1.24",
+    "prettier": "^3.4.2"
+  }
+}
