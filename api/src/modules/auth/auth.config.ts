@@ -69,6 +69,18 @@ export const auth = betterAuth({
     process.env.FRONTEND_URL_WWW ?? 'http://localhost:3001',
     'http://localhost:3001',
   ],
+
+  advanced: {
+    crossSubdomainCookies: {
+      enabled: false,
+    },
+    defaultCookieAttributes: {
+      secure: true,
+      httpOnly: true,
+      sameSite: 'none',
+      partitioned: true,
+    },
+  },
 });
 
 export type Auth = typeof auth;
