@@ -64,8 +64,10 @@ export const auth = betterAuth({
   },
 
   trustedOrigins: [
-    process.env.BETTER_AUTH_URL ?? 'http://localhost:3000',
-    process.env.FRONTEND_URL ?? 'http://localhost:3001',
+    process.env.BETTER_AUTH_URL  ?? 'http://localhost:3000',
+    process.env.FRONTEND_URL     ?? 'http://localhost:3001',
+    process.env.FRONTEND_URL_WWW ?? 'http://localhost:3001',
+    'http://localhost:3001',
   ],
 });
 
