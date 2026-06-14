@@ -5,7 +5,7 @@
     "buildCommand": "npx prisma generate --schema=api/prisma/schema.prisma && npm run build --workspace=api"
   },
   "deploy": {
-    "startCommand": "node dist/main.js",
+    "startCommand": "node api/dist/src/main.js",
     "restartPolicyType": "ON_FAILURE"
   }
 }
