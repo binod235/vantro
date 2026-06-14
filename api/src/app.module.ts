@@ -19,6 +19,14 @@ import { BillingModule } from './modules/billing/billing.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { QuotesModule } from './modules/quotes/quotes.module';
 import { GasCertificatesModule } from './modules/gas-certificates/gas-certificates.module';
+import { RemindersModule }       from './modules/reminders/reminders.module';
+import { RecurringJobsModule }   from './modules/recurring-jobs/recurring-jobs.module';
+import { PriceListsModule }     from './modules/price-lists/price-lists.module';
+import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { CommsModule }    from './modules/comms/comms.module';
+import { JsrModule }     from './modules/job-service-reports/jsr.module';
+import { SubcontractorsModule } from './modules/subcontractors/subcontractors.module';
 
 @Module({
   imports: [
@@ -44,6 +52,14 @@ import { GasCertificatesModule } from './modules/gas-certificates/gas-certificat
     InvoicesModule,
     QuotesModule,
     GasCertificatesModule,
+    RemindersModule,
+    RecurringJobsModule,
+    PriceListsModule,
+    PurchaseOrdersModule,
+    PaymentsModule,
+    CommsModule,
+    JsrModule,
+    SubcontractorsModule,
   ],
 })
 export class AppModule {}

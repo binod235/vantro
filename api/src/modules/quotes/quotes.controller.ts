@@ -48,6 +48,25 @@ export class QuotesController {
     return this.quotesService.rejectByToken(token, body.reason);
   }
 
+  // ── Tracking pixel — public, MUST be before :id routes ───────────────────
+
+  @Get('track/:id/viewed')
+  @Public()
+  async trackViewed(
+    @Param('id') id: string,
+    @Res() res: { setHeader(n: string, v: string): void; end(b: Buffer): void },
+  ): Promise<void> {
+    await this.quotesService.markViewed(id);
+    const pixel = Buffer.from(
+      'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+      'base64',
+    );
+    res.setHeader('Content-Type', 'image/gif');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Content-Length', String(pixel.length));
+    res.end(pixel);
+  }
+
   // ── Protected routes (OWNER only) ─────────────────────────────────────────
 
   @Get()
@@ -129,5 +148,45 @@ export class QuotesController {
     @Param('id') id: string,
   ) {
     return this.quotesService.cancel(user.companyId!, id);
+  }
+
+  @Patch(':id/approve')
+  @HttpCode(HttpStatus.OK)
+  @Roles('OWNER')
+  approve(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id') id: string,
+  ) {
+    return this.quotesService.approve(user.companyId!, id);
+  }
+
+  @Patch(':id/reset-to-draft')
+  @HttpCode(HttpStatus.OK)
+  @Roles('OWNER')
+  resetToDraft(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id') id: string,
+  ) {
+    return this.quotesService.resetToDraft(user.companyId!, id);
+  }
+
+  @Post(':id/create-job')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles('OWNER')
+  createJob(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id') id: string,
+  ) {
+    return this.quotesService.createJobFromQuote(user.companyId!, id);
+  }
+
+  @Post(':id/revise')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles('OWNER')
+  revise(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id') id: string,
+  ) {
+    return this.quotesService.revise(user.companyId!, id);
   }
 }

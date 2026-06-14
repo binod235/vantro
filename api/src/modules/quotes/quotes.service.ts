@@ -8,6 +8,7 @@ import {
 import { randomUUID } from 'crypto';
 import { Resend } from 'resend';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CommsService }  from '../comms/comms.service';
 import type { CreateQuoteDto } from './dto/create-quote.dto';
 import type { UpdateQuoteDto } from './dto/update-quote.dto';
 
@@ -88,7 +89,10 @@ const QUOTE_INCLUDE = {
 export class QuotesService {
   private readonly logger = new Logger(QuotesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly comms: CommsService,
+  ) {}
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -208,11 +212,12 @@ export class QuotesService {
 
   async update(companyId: string, quoteId: string, dto: UpdateQuoteDto) {
     const quote = await this.getOne(companyId, quoteId);
-    if (['ACCEPTED', 'INVOICED'].includes(quote.status)) {
-      throw new BadRequestException('Cannot edit an accepted or invoiced quote');
+    if (!['DRAFT', 'APPROVED', 'SENT'].includes(quote.status)) {
+      throw new BadRequestException('Cannot edit quote in current status');
     }
     const rawItems = dto.line_items ?? (quote.line_items as unknown as InputLineItem[]);
     const { items, totals } = this.processLineItems(rawItems);
+    const resetToDraft = ['APPROVED', 'SENT'].includes(quote.status);
 
     return this.prisma.client.quote.update({
       where: { id: quoteId },
@@ -233,8 +238,48 @@ export class QuotesService {
         expiry_date: dto.expiry_date ? new Date(dto.expiry_date) : quote.expiry_date,
         issue_date: dto.issue_date ? new Date(dto.issue_date) : quote.issue_date,
         notes: dto.notes !== undefined ? dto.notes : quote.notes,
+        ...(resetToDraft ? { status: 'DRAFT' as never } : {}),
       },
       include: QUOTE_INCLUDE,
+    });
+  }
+
+  async revise(companyId: string, quoteId: string) {
+    const quote = await this.getOne(companyId, quoteId);
+    if (quote.status !== 'ACCEPTED') {
+      throw new BadRequestException('Only accepted quotes can be revised');
+    }
+
+    return this.prisma.client.$transaction(async (tx) => {
+      const company = await tx.company.findUnique({
+        where:  { id: companyId },
+        select: { quote_expiry_days: true },
+      });
+      const quoteNumber = await this.generateQuoteNumber(tx, companyId);
+      const issueDate   = new Date();
+      const expiryDate  = this.getDefaultExpiry(company?.quote_expiry_days, issueDate);
+
+      return tx.quote.create({
+        data: {
+          company_id:               companyId,
+          customer_id:              quote.customer_id,
+          job_id:                   quote.job_id,
+          quote_number:             quoteNumber,
+          reference:                quote.reference ? `${quote.reference} (Rev)` : null,
+          line_items:               quote.line_items as never,
+          subtotal_pence:           quote.subtotal_pence,
+          vat_amount_pence:         quote.vat_amount_pence,
+          reverse_charge_vat_pence: quote.reverse_charge_vat_pence,
+          total_pence:              quote.total_pence,
+          amount_pence:             quote.amount_pence,
+          is_reverse_charge:        quote.is_reverse_charge,
+          reverse_charge_wording:   quote.reverse_charge_wording,
+          issue_date:               issueDate,
+          expiry_date:              expiryDate,
+          notes:                    quote.notes,
+        },
+        include: QUOTE_INCLUDE,
+      });
     });
   }
 
@@ -292,10 +337,85 @@ export class QuotesService {
     }
   }
 
+  // ── Approve ───────────────────────────────────────────────────────────────
+
+  async approve(companyId: string, quoteId: string) {
+    const quote = await this.getOne(companyId, quoteId);
+    if (!['DRAFT', 'SENT'].includes(quote.status)) {
+      throw new BadRequestException('Only draft or sent quotes can be approved');
+    }
+    return this.prisma.client.quote.update({
+      where: { id: quoteId },
+      data: { status: 'APPROVED' as never },
+      include: QUOTE_INCLUDE,
+    });
+  }
+
+  // ── Reset to draft ────────────────────────────────────────────────────────
+
+  async resetToDraft(companyId: string, quoteId: string) {
+    const quote = await this.getOne(companyId, quoteId);
+    if (!['APPROVED', 'SENT'].includes(quote.status)) {
+      throw new BadRequestException('Only approved or sent quotes can be reset to draft');
+    }
+    return this.prisma.client.quote.update({
+      where: { id: quoteId },
+      data: { status: 'DRAFT' as never },
+      include: QUOTE_INCLUDE,
+    });
+  }
+
+  // ── Create job from quote ─────────────────────────────────────────────────
+
+  async createJobFromQuote(companyId: string, quoteId: string) {
+    const quote = await this.getOne(companyId, quoteId);
+    if (quote.status !== 'ACCEPTED') {
+      throw new BadRequestException('Job can only be created from an accepted quote');
+    }
+    if (!quote.customer_id) {
+      throw new BadRequestException('Quote must have a customer to create a job');
+    }
+    return this.prisma.client.$transaction(async (tx) => {
+      const job = await tx.job.create({
+        data: {
+          company_id:  companyId,
+          customer_id: quote.customer_id!,
+          title:       `Job for ${quote.quote_number}`,
+          description: quote.notes ?? null,
+          status:      'QUOTED' as never,
+        },
+      });
+      await tx.quote.update({
+        where: { id: quoteId },
+        data:  { job_id: job.id },
+      });
+      return job;
+    });
+  }
+
+  // ── Mark viewed (tracking pixel) ──────────────────────────────────────────
+
+  async markViewed(quoteId: string): Promise<void> {
+    try {
+      await this.prisma.client.quote.update({
+        where: { id: quoteId },
+        data: {
+          viewed_at:  new Date(),
+          view_count: { increment: 1 },
+        },
+      });
+    } catch {
+      // Silently ignore — pixel must never 500
+    }
+  }
+
   // ── Send email ────────────────────────────────────────────────────────────
 
   async sendEmail(companyId: string, quoteId: string) {
     const quote = await this.getOne(companyId, quoteId);
+    if (!['APPROVED', 'SENT'].includes(quote.status)) {
+      throw new BadRequestException('Quote must be approved before sending. Use the Approve button first.');
+    }
     const company = await this.prisma.client.company.findUnique({ where: { id: companyId } });
     if (!company) throw new NotFoundException('Company not found');
     if (!quote.customer?.email) {
@@ -313,7 +433,9 @@ export class QuotesService {
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3001';
+    const apiUrl = process.env.API_URL ?? 'http://localhost:3000';
     const acceptanceUrl = `${appUrl}/quote/${token}`;
+    const trackingPixel = `${apiUrl}/api/quotes/track/${quoteId}/viewed`;
 
     let pdfBuffer: Buffer | undefined;
     try {
@@ -326,19 +448,20 @@ export class QuotesService {
     const { error: emailError } = await resend.emails.send({
       from: process.env.FROM_EMAIL ?? 'noreply@vantro.co.uk',
       to: quote.customer.email,
-      subject: `Quote ${quote.quote_number} from ${company.name}`,
+      subject: `Quote ${quote.quote_number} from ${company.name} — awaiting your response`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
           <h2 style="color:#111;">Quote from ${company.name}</h2>
-          <p>Please find your quote <strong>${quote.quote_number}</strong> attached.</p>
+          <p>Please find your quote <strong>${quote.quote_number}</strong> below. You can accept or decline using the button above.</p>
           <table style="font-size:14px;border-collapse:collapse;margin:16px 0;">
             <tr><td style="color:#888;padding:4px 16px 4px 0;">Total</td><td><strong>£${(quote.total_pence / 100).toFixed(2)}</strong></td></tr>
             ${quote.expiry_date ? `<tr><td style="color:#888;padding:4px 16px 4px 0;">Valid until</td><td><strong>${new Date(quote.expiry_date).toLocaleDateString('en-GB')}</strong></td></tr>` : ''}
           </table>
           <a href="${acceptanceUrl}" style="display:inline-block;background:#1d4ed8;color:white;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:15px;margin:8px 0;">
-            View &amp; Accept Quote
+            Review &amp; Respond to Quote &rarr;
           </a>
           <p style="color:#999;font-size:12px;margin-top:16px;">Or copy this link: ${acceptanceUrl}</p>
+          <img src="${trackingPixel}" width="1" height="1" style="display:none;" alt="" />
         </div>
       `,
       ...(pdfBuffer
@@ -349,10 +472,21 @@ export class QuotesService {
 
     this.logger.log(`Quote ${quote.quote_number} emailed to ${quote.customer.email}`);
 
+    void this.comms.log({
+      company_id:  companyId,
+      customer_id: quote.customer_id    ?? undefined,
+      job_id:      quote.job_id         ?? undefined,
+      quote_id:    quote.id,
+      type:        'QUOTE_SENT',
+      subject:     `Quote ${quote.quote_number}`,
+      to_email:    quote.customer.email,
+      reference:   quote.quote_number,
+    });
+
     await this.prisma.client.quote.update({
       where: { id: quoteId },
       data: {
-        status: quote.status === 'DRAFT' ? 'SENT' as never : quote.status as never,
+        status:      'SENT' as never,
         last_sent_at: new Date(),
       },
     });
@@ -387,7 +521,12 @@ export class QuotesService {
   async acceptByToken(token: string) {
     const quote = await this.prisma.client.quote.findUnique({
       where: { acceptance_token: token },
-      select: { id: true, status: true },
+      select: {
+        id: true, status: true, quote_number: true, total_pence: true, company_id: true,
+        customer_id: true,
+        customer: { select: { name: true, email: true } },
+        company: { select: { name: true } },
+      },
     });
     if (!quote) throw new NotFoundException('Quote not found');
     if (quote.status === 'ACCEPTED') return { success: true, already: true };
@@ -398,6 +537,51 @@ export class QuotesService {
       where: { id: quote.id },
       data: { status: 'ACCEPTED' as never, accepted_at: new Date() },
     });
+
+    void this.comms.log({
+      company_id:  quote.company_id,
+      customer_id: quote.customer_id ?? undefined,
+      quote_id:    quote.id,
+      type:        'QUOTE_ACCEPTED',
+      subject:     `Quote ${quote.quote_number} accepted by customer`,
+      to_email:    quote.customer?.email ?? '',
+      reference:   quote.quote_number,
+    });
+
+    // Notify owner
+    try {
+      const owner = await this.prisma.client.user.findFirst({
+        where: { companyId: quote.company_id, role: 'OWNER' },
+        select: { email: true },
+      });
+      const resendKey = process.env.RESEND_API_KEY;
+      if (owner?.email && resendKey) {
+        const resend = new Resend(resendKey);
+        await resend.emails.send({
+          from:    process.env.FROM_EMAIL ?? 'noreply@vantro.co.uk',
+          to:      owner.email,
+          subject: `Quote accepted — ${quote.quote_number}`,
+          html: `
+            <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;">
+              <h3 style="color:#111;">Quote accepted</h3>
+              <p style="color:#555;font-size:14px;">
+                <strong>${quote.customer?.name ?? 'Your customer'}</strong> has accepted quote
+                <strong>${quote.quote_number}</strong>.
+              </p>
+              <table style="font-size:13px;border-collapse:collapse;margin:16px 0;background:#f0fdf4;width:100%;border-radius:8px;">
+                <tr><td style="padding:8px 16px;color:#888;">Quote</td><td style="padding:8px 16px;font-weight:600;">${quote.quote_number}</td></tr>
+                <tr style="border-top:1px solid #dcfce7;"><td style="padding:8px 16px;color:#888;">Customer</td><td style="padding:8px 16px;">${quote.customer?.name ?? '—'}</td></tr>
+                <tr style="border-top:1px solid #dcfce7;"><td style="padding:8px 16px;color:#888;">Value</td><td style="padding:8px 16px;font-weight:600;color:#15803d;">£${(quote.total_pence / 100).toFixed(2)}</td></tr>
+              </table>
+              <p style="color:#888;font-size:12px;">Log in to Vantro to create a job and raise an invoice.</p>
+            </div>
+          `,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(`Owner notification failed for quote ${quote.quote_number}: ${String(err)}`);
+    }
+
     return { success: true, already: false };
   }
 

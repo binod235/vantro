@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 import { InvoicesController } from './invoices.controller';
 import { InvoicesService } from './invoices.service';
-import { PrismaModule } from '../../prisma/prisma.module'; // ⚠️ adapt path if yours differs
- 
+import { PrismaModule } from '../../prisma/prisma.module';
+import { CommsModule }   from '../comms/comms.module';
+
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, CommsModule],
   controllers: [InvoicesController],
   providers: [InvoicesService],
-  exports: [InvoicesService], // export if other modules (e.g. CIS) need it later
+  exports: [InvoicesService],
 })
 export class InvoicesModule {}
  

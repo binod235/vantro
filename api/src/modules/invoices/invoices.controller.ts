@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -21,6 +22,7 @@ import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { CurrentUserType } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 
 @Controller('invoices')
 @Roles('OWNER') // V1: invoices are OWNER-only
@@ -46,6 +48,25 @@ export class InvoicesController {
     return this.invoicesService.create(user.companyId!, dto);
   }
 
+  // ── POST /invoices/bulk-create ────────────────────────────────────────────
+  @Post('bulk-create')
+  bulkCreate(
+    @CurrentUser() user: CurrentUserType,
+    @Body() body: { job_ids: string[]; due_date?: string; send_emails?: boolean },
+  ) {
+    if (!body.job_ids?.length) {
+      throw new BadRequestException('No jobs selected');
+    }
+    if (body.job_ids.length > 50) {
+      throw new BadRequestException('Maximum 50 jobs per billing run');
+    }
+    return this.invoicesService.bulkCreateFromJobs(
+      user.companyId!,
+      body.job_ids,
+      { due_date: body.due_date, send_emails: body.send_emails ?? false },
+    );
+  }
+
   // ── POST /invoices/from-quote/:quoteId ────────────────────────────────────
   // NOTE: declared before :id routes to avoid collision
   @Post('from-quote/:quoteId')
@@ -64,6 +85,14 @@ export class InvoicesController {
     @Param('jobId') jobId: string,
   ) {
     return this.invoicesService.createFromJob(user.companyId!, jobId);
+  }
+
+  // ── GET /invoices/:id/viewed — public tracking pixel ─────────────────────
+  @Get(':id/viewed')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async markViewed(@Param('id') id: string): Promise<void> {
+    await this.invoicesService.markViewed(id);
   }
 
   // ── GET /invoices/:id ─────────────────────────────────────────────────────
@@ -170,5 +199,14 @@ export class InvoicesController {
     @Param('id') id: string,
   ) {
     return this.invoicesService.emailInvoice(user.companyId!, id);
+  }
+
+  // ── PATCH /invoices/:id/toggle-reminders ─────────────────────────────────
+  @Patch(':id/toggle-reminders')
+  toggleReminders(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id') id: string,
+  ) {
+    return this.invoicesService.toggleReminders(user.companyId!, id);
   }
 }

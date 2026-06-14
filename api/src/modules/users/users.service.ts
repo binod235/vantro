@@ -20,6 +20,9 @@ const USER_SELECT = {
   companyId: true,
   emailVerified: true,
   calendar_colour: true,
+  gas_safe_number: true,
+  corgi_number: true,
+  qualification: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -107,6 +110,18 @@ export class UsersService {
     return this.prisma.client.user.update({
       where: { id },
       data: { name: dto.name, role: dto.role },
+      select: USER_SELECT,
+    });
+  }
+
+  async updateMe(userId: string, dto: {
+    gas_safe_number?: string | null;
+    corgi_number?: string | null;
+    qualification?: string | null;
+  }) {
+    return this.prisma.client.user.update({
+      where: { id: userId },
+      data:  dto,
       select: USER_SELECT,
     });
   }

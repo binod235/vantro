@@ -6,7 +6,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Resend } from 'resend';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CommsService }  from '../comms/comms.service';
 import type { CreateInvoiceDto } from './dto/create-invoice.dto';
 import type { UpdateInvoiceDto } from './dto/update-invoice.dto';
 import type { CreateInvoiceFromQuoteDto } from './dto/create-invoice-from-quote.dto';
@@ -96,7 +98,10 @@ const INVOICE_INCLUDE = {
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly comms: CommsService,
+  ) {}
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -420,11 +425,8 @@ export class InvoicesService {
 
   async update(companyId: string, invoiceId: string, dto: UpdateInvoiceDto) {
     const invoice = await this.getOne(companyId, invoiceId);
-    if (invoice.status === 'CANCELLED') {
-      throw new BadRequestException('Cancelled invoices cannot be edited');
-    }
-    if (!['DRAFT', 'SENT'].includes(invoice.status)) {
-      throw new BadRequestException('Only DRAFT or SENT invoices can be edited');
+    if (['PAID', 'CANCELLED'].includes(invoice.status)) {
+      throw new BadRequestException('Paid and cancelled invoices cannot be edited');
     }
 
     if (dto.customer_id) await this.verifyCustomer(dto.customer_id, companyId);
@@ -506,7 +508,7 @@ export class InvoicesService {
       },
     });
 
-    return this.prisma.client.invoice.update({
+    const result = await this.prisma.client.invoice.update({
       where: { id: invoiceId },
       data: {
         amount_paid_pence: newPaid,
@@ -516,6 +518,15 @@ export class InvoicesService {
       },
       include: INVOICE_INCLUDE,
     });
+
+    if (newStatus === 'PAID') {
+      await this.prisma.client.jobStage.updateMany({
+        where: { invoice_id: invoiceId, status: 'INVOICED' },
+        data:  { status: 'PAID' },
+      });
+    }
+
+    return result;
   }
 
   // ── Mark paid ──────────────────────────────────────────────────────────────
@@ -542,7 +553,7 @@ export class InvoicesService {
       });
     }
 
-    return this.prisma.client.invoice.update({
+    const result = await this.prisma.client.invoice.update({
       where: { id: invoiceId },
       data: {
         status: 'PAID',
@@ -553,6 +564,13 @@ export class InvoicesService {
       },
       include: INVOICE_INCLUDE,
     });
+
+    await this.prisma.client.jobStage.updateMany({
+      where: { invoice_id: invoiceId, status: 'INVOICED' },
+      data:  { status: 'PAID' },
+    });
+
+    return result;
   }
 
   // ── Mark unpaid ────────────────────────────────────────────────────────────
@@ -596,6 +614,37 @@ export class InvoicesService {
     });
   }
 
+  // ── Mark viewed ───────────────────────────────────────────────────────────
+
+  async markViewed(invoiceId: string) {
+    try {
+      const invoice = await this.prisma.client.invoice.findUnique({
+        where: { id: invoiceId },
+        select: { viewed_at: true },
+      });
+      await this.prisma.client.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          viewed_at:  invoice?.viewed_at ? undefined : new Date(),
+          view_count: { increment: 1 },
+        },
+      });
+    } catch {
+      // Silently ignore if invoice not found
+    }
+  }
+
+  // ── Toggle reminders ──────────────────────────────────────────────────────
+
+  async toggleReminders(companyId: string, invoiceId: string) {
+    const invoice = await this.getOne(companyId, invoiceId);
+    return this.prisma.client.invoice.update({
+      where: { id: invoiceId },
+      data:  { reminders_disabled: !invoice.reminders_disabled },
+      include: INVOICE_INCLUDE,
+    });
+  }
+
   // ── Delete ─────────────────────────────────────────────────────────────────
 
   async remove(companyId: string, invoiceId: string) {
@@ -635,6 +684,149 @@ export class InvoicesService {
     }
   }
 
+  // ── Bulk create from jobs ─────────────────────────────────────────────────
+
+  async bulkCreateFromJobs(
+    companyId: string,
+    jobIds:    string[],
+    options: {
+      due_date?:    string;
+      send_emails?: boolean;
+    },
+  ) {
+    const results: {
+      job_id:         string;
+      job_title:      string;
+      invoice_id:     string | null;
+      invoice_number: string | null;
+      success:        boolean;
+      error?:         string;
+    }[] = [];
+
+    for (const jobId of jobIds) {
+      try {
+        const job = await this.prisma.client.job.findFirst({
+          where:   { id: jobId, company_id: companyId },
+          include: {
+            customer: true,
+            quotes: {
+              where:   { status: 'ACCEPTED' as never },
+              orderBy: { created_at: 'desc' },
+              take:    1,
+            },
+            timesheets: {
+              select: {
+                duration_minutes:  true,
+                total_pence:       true,
+              },
+            },
+          },
+        });
+
+        if (!job) {
+          results.push({
+            job_id: jobId, job_title: '', invoice_id: null,
+            invoice_number: null, success: false,
+            error: 'Job not found',
+          });
+          continue;
+        }
+
+        // Build line items from accepted quote or timesheets
+        let lineItems: unknown[] = [];
+        let subtotalPence = 0;
+        let vatPence = 0;
+
+        const acceptedQuote = job.quotes[0];
+        if (acceptedQuote?.line_items && (acceptedQuote.line_items as unknown[]).length > 0) {
+          lineItems     = acceptedQuote.line_items as unknown[];
+          subtotalPence = acceptedQuote.subtotal_pence;
+          vatPence      = acceptedQuote.vat_amount_pence;
+        } else if (job.timesheets.length > 0) {
+          lineItems = job.timesheets.map((ts, i) => ({
+            id:               `ts_${i}`,
+            description:      `Labour — ${Math.floor(ts.duration_minutes / 60)}h${ts.duration_minutes % 60 > 0 ? ` ${ts.duration_minutes % 60}m` : ''}`,
+            quantity:         1,
+            unit_price_pence: ts.total_pence,
+            vat_type:         'STANDARD',
+            vat_rate:         20,
+            net_pence:        ts.total_pence,
+            vat_pence:        Math.round(ts.total_pence * 0.20),
+            reverse_charge_vat_pence: 0,
+          }));
+          subtotalPence = job.timesheets.reduce((s, t) => s + t.total_pence, 0);
+          vatPence      = Math.round(subtotalPence * 0.20);
+        }
+
+        const totalPence = subtotalPence + vatPence;
+
+        const issueDate = new Date();
+        const dueDate   = options.due_date
+          ? new Date(options.due_date)
+          : new Date(issueDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+        const invoice = await this.prisma.client.$transaction(async (tx) => {
+          const invoiceNumber = await this.generateInvoiceNumber(tx, companyId);
+          return tx.invoice.create({
+            data: {
+              company_id:              companyId,
+              customer_id:             job.customer_id,
+              job_id:                  job.id,
+              invoice_number:          invoiceNumber,
+              invoice_type:            'STANDARD' as never,
+              source_type:             'JOB'      as never,
+              status:                  'DRAFT'    as never,
+              line_items:              lineItems  as never,
+              subtotal_pence:          subtotalPence,
+              vat_amount_pence:        vatPence,
+              reverse_charge_vat_pence: 0,
+              total_pence:             totalPence,
+              amount_due_pence:        totalPence,
+              is_reverse_charge:       false,
+              issue_date:              issueDate,
+              due_date:                dueDate,
+            },
+          });
+        });
+
+        if (options.send_emails) {
+          try {
+            await this.emailInvoice(companyId, invoice.id);
+          } catch (emailErr) {
+            this.logger.warn(
+              `Bulk invoice email failed for ${invoice.invoice_number}: ${String(emailErr)}`,
+            );
+          }
+        }
+
+        results.push({
+          job_id:         jobId,
+          job_title:      job.title,
+          invoice_id:     invoice.id,
+          invoice_number: invoice.invoice_number,
+          success:        true,
+        });
+
+      } catch (err) {
+        results.push({
+          job_id:         jobId,
+          job_title:      '',
+          invoice_id:     null,
+          invoice_number: null,
+          success:        false,
+          error:          err instanceof Error ? err.message : 'Unknown error',
+        });
+      }
+    }
+
+    const created = results.filter(r => r.success).length;
+    const failed  = results.filter(r => !r.success).length;
+
+    this.logger.log(`Bulk invoicing: ${created} created, ${failed} failed`);
+
+    return { results, created, failed };
+  }
+
   // ── Email invoice ──────────────────────────────────────────────────────────
 
   async emailInvoice(companyId: string, invoiceId: string) {
@@ -649,6 +841,24 @@ export class InvoicesService {
     const resendKey = process.env.RESEND_API_KEY;
     if (!resendKey) throw new BadRequestException('Email service is not configured');
 
+    // Generate payment_token if not yet set
+    const rawInvoice = await this.prisma.client.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { payment_token: true },
+    });
+    let paymentToken = rawInvoice?.payment_token;
+    if (!paymentToken) {
+      paymentToken = randomUUID();
+      await this.prisma.client.invoice.update({
+        where: { id: invoiceId },
+        data: { payment_token: paymentToken },
+      });
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3001';
+    const payLink = `${frontendUrl}/invoice/${paymentToken}`;
+    const canPayOnline = company.stripe_connect_enabled && company.stripe_connect_onboarded;
+
     let pdfBuffer: Buffer | undefined;
     try {
       pdfBuffer = await this.generatePdf(companyId, invoiceId);
@@ -656,16 +866,46 @@ export class InvoicesService {
       this.logger.warn(`PDF generation failed for invoice ${invoiceId}: ${String(err)}`);
     }
 
+    const apiUrl = process.env.API_URL ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:3000';
+    const trackingUrl = `${apiUrl}/api/invoices/${invoiceId}/viewed`;
+
+    const bankSection = company.bank_account_number
+      ? `<div style="margin:20px 0;padding:16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+           <p style="margin:0 0 6px;font-size:13px;font-weight:600;color:#374151;">Bank Transfer Details</p>
+           ${company.bank_name ? `<p style="margin:2px 0;font-size:13px;color:#6b7280;">Bank: ${company.bank_name}</p>` : ''}
+           ${company.bank_account_name ? `<p style="margin:2px 0;font-size:13px;color:#6b7280;">Account name: ${company.bank_account_name}</p>` : ''}
+           ${company.bank_sort_code ? `<p style="margin:2px 0;font-size:13px;color:#6b7280;">Sort code: ${company.bank_sort_code}</p>` : ''}
+           <p style="margin:2px 0;font-size:13px;color:#6b7280;">Account number: ${company.bank_account_number}</p>
+         </div>`
+      : '';
+
+    const payNowSection = canPayOnline
+      ? `<div style="margin:24px 0;text-align:center;">
+           <a href="${payLink}" style="display:inline-block;background:#1d4ed8;color:#fff;font-weight:600;font-size:15px;padding:12px 32px;border-radius:8px;text-decoration:none;">Pay Now Online</a>
+           <p style="margin:10px 0 0;font-size:12px;color:#9ca3af;">Or <a href="${payLink}?action=mark-paid" style="color:#6b7280;">click here if you've already paid by bank transfer</a></p>
+         </div>`
+      : `<div style="margin:16px 0;">
+           <a href="${payLink}" style="font-size:13px;color:#6b7280;">View invoice online</a>
+         </div>`;
+
     const resend = new Resend(resendKey);
     const { error: emailError } = await resend.emails.send({
       from: process.env.FROM_EMAIL ?? 'noreply@vantro.co.uk',
       to: invoice.customer.email,
       subject: `Invoice ${invoice.invoice_number} from ${company.name}`,
-      html: `<p>Please find attached invoice <strong>${invoice.invoice_number}</strong> for £${(invoice.total_pence / 100).toFixed(2)}.</p>
-             <p>Amount due: £${(invoice.amount_due_pence / 100).toFixed(2)}</p>
-             ${invoice.due_date ? `<p>Due date: ${new Date(invoice.due_date).toLocaleDateString('en-GB')}</p>` : ''}
-             ${company.bank_account_number ? `<p>Bank: ${company.bank_name ?? ''} | Sort: ${company.bank_sort_code ?? ''} | Acc: ${company.bank_account_number}</p>` : ''}
-             <p>${company.default_payment_terms ?? 'Payment due within 30 days'}</p>`,
+      html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111827;">
+               <h2 style="font-size:20px;margin-bottom:4px;">Invoice ${invoice.invoice_number}</h2>
+               <p style="color:#6b7280;font-size:14px;margin-top:0;">From <strong>${company.name}</strong></p>
+               <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+                 <tr><td style="padding:6px 0;font-size:14px;color:#6b7280;">Total</td><td style="padding:6px 0;font-size:14px;font-weight:600;text-align:right;">£${(invoice.total_pence / 100).toFixed(2)}</td></tr>
+                 <tr><td style="padding:6px 0;font-size:14px;color:#6b7280;">Amount due</td><td style="padding:6px 0;font-size:14px;font-weight:700;color:#1d4ed8;text-align:right;">£${(invoice.amount_due_pence / 100).toFixed(2)}</td></tr>
+                 ${invoice.due_date ? `<tr><td style="padding:6px 0;font-size:14px;color:#6b7280;">Due date</td><td style="padding:6px 0;font-size:14px;text-align:right;">${new Date(invoice.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</td></tr>` : ''}
+               </table>
+               ${payNowSection}
+               ${bankSection}
+               <p style="font-size:13px;color:#6b7280;">${company.default_payment_terms ?? 'Payment due within 30 days'}</p>
+               <img src="${trackingUrl}" width="1" height="1" style="display:none" alt="" />
+             </div>`,
       ...(pdfBuffer
         ? {
             attachments: [
@@ -680,6 +920,17 @@ export class InvoicesService {
     if (emailError) throw new Error(`Failed to send invoice email: ${emailError.message}`);
 
     this.logger.log(`Invoice ${invoice.invoice_number} emailed to ${invoice.customer.email}`);
+
+    void this.comms.log({
+      company_id:  companyId,
+      customer_id: invoice.customer_id ?? undefined,
+      job_id:      invoice.job_id      ?? undefined,
+      invoice_id:  invoice.id,
+      type:        'INVOICE_SENT',
+      subject:     `Invoice ${invoice.invoice_number}`,
+      to_email:    invoice.customer.email,
+      reference:   invoice.invoice_number,
+    });
 
     // Advance status from DRAFT → SENT (but not if already PAID/PART_PAID)
     if (invoice.status === 'DRAFT') {

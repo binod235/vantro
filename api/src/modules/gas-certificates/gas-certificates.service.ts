@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Resend } from 'resend';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CommsService }  from '../comms/comms.service';
 import type { CreateGasCertDto } from './dto/create-gas-cert.dto';
 import type { UpdateGasCertDto } from './dto/update-gas-cert.dto';
 
@@ -20,7 +21,10 @@ const CERT_INCLUDE = {
 export class GasCertificatesService {
   private readonly logger = new Logger(GasCertificatesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly comms: CommsService,
+  ) {}
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -166,7 +170,7 @@ export class GasCertificatesService {
           company_id: companyId,
           customer_id: dto.customer_id,
           job_id: dto.job_id ?? null,
-          engineer_id: dto.engineer_id ?? null,
+          engineer_id: dto.engineer_id ?? userId,
           cert_type: dto.cert_type as never,
           cert_number: certNumber,
           inspection_date: inspectionDate,
@@ -338,6 +342,16 @@ export class GasCertificatesService {
     if (emailError) throw new Error(`Failed to send certificate email: ${emailError.message}`);
 
     this.logger.log(`Certificate ${cert.cert_number} emailed to ${cert.customer.email}`);
+
+    void this.comms.log({
+      company_id:  companyId,
+      customer_id: cert.customer_id ?? undefined,
+      job_id:      cert.job_id      ?? undefined,
+      type:        'GAS_CERT_SENT',
+      subject:     `Gas Certificate ${cert.cert_number}`,
+      to_email:    cert.customer.email,
+      reference:   cert.cert_number,
+    });
 
     await this.prisma.client.gasSafetyCertificate.update({
       where: { id: certId },

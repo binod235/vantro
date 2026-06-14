@@ -9,7 +9,21 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { IsString, Matches } from 'class-validator';
+import { IsOptional, IsString, Matches } from 'class-validator';
+
+class UpdateMeDto {
+  @IsOptional()
+  @IsString()
+  gas_safe_number?: string | null;
+
+  @IsOptional()
+  @IsString()
+  corgi_number?: string | null;
+
+  @IsOptional()
+  @IsString()
+  qualification?: string | null;
+}
 
 class UpdateColourDto {
   @IsString()
@@ -57,6 +71,12 @@ export class UsersController {
   findOne(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
     if (!user.companyId) return null;
     return this.usersService.findOne(id, user.companyId);
+  }
+
+  /** Update the current user's own engineer details (Gas Safe number, qualification, etc). */
+  @Patch('me')
+  updateMe(@Body() dto: UpdateMeDto, @CurrentUser() user: CurrentUserType) {
+    return this.usersService.updateMe(user.id, dto);
   }
 
   /** Update a user. Owners can update anyone; engineers can update themselves only. */

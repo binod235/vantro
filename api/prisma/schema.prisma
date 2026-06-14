@@ -96,6 +96,7 @@ enum VatType {
 
 enum QuoteStatus {
   DRAFT
+  APPROVED
   SENT
   ACCEPTED
   REJECTED
@@ -124,6 +125,13 @@ enum TodoPriority {
   URGENT
 }
 
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  RECEIVED
+  CANCELLED
+}
+
 enum TodoStatus {
   OPEN
   DONE
@@ -142,6 +150,9 @@ model User {
   invite_token      String?   @unique
   invite_expires_at DateTime?
   calendar_colour   String?
+  gas_safe_number   String?
+  corgi_number      String?
+  qualification     String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -156,7 +167,10 @@ model User {
   created_todos        Todo[]                 @relation("TodoCreator")
   assigned_todos       Todo[]                 @relation("TodoAssignee")
   completed_todos      Todo[]                 @relation("TodoCompleter")
-  activeTimers         ActiveTimer[]
+  activeTimers          ActiveTimer[]
+  jobPhotos             JobPhoto[]
+  recurringJobTemplates RecurringJob[]
+  defaultJobTemplates   JobTemplate[]
 
   @@map("user")
 }
@@ -219,6 +233,11 @@ model Company {
   payment_failed_at             DateTime?
   stripe_cancel_at_period_end   Boolean   @default(false)
   stripe_current_period_end     DateTime?
+  // Stripe Connect (invoice payments)
+  stripe_connect_id           String?
+  stripe_connect_enabled      Boolean  @default(false)
+  stripe_connect_onboarded    Boolean  @default(false)
+  pass_fee_to_customer        Boolean  @default(false)
   trial_reminder_4_days_sent_at DateTime?
   trial_reminder_1_day_sent_at  DateTime?
   standard_rate_pence        Int                @default(0)
@@ -229,8 +248,9 @@ model Company {
   vat_number          String?
   vat_registered      Boolean  @default(false)
   default_vat_rate    Float    @default(20.0)
-  cis_registered      Boolean  @default(false)
-  cis_number          String?
+  cis_registered           Boolean @default(false)
+  cis_number               String?
+  cis_accounts_office_ref  String?
 
   // Logo
   logo_url            String?
@@ -247,6 +267,9 @@ model Company {
 
   gas_cert_next_number Int @default(1)
 
+  po_prefix      String @default("PO")
+  po_next_number Int    @default(1)
+
  // Invoice design / branding
   invoice_template          String  @default("MODERN")
   invoice_accent_colour     String  @default("#1d4ed8")
@@ -255,6 +278,22 @@ model Company {
   invoice_show_site_address Boolean @default(true)
   invoice_show_payment_info Boolean @default(true)
  
+
+  // Payment reminder settings
+  payment_reminders_enabled Boolean @default(true)
+  reminder_days_before      Int     @default(0)
+  reminder_days_after_1     Int     @default(7)
+  reminder_days_after_2     Int     @default(14)
+  reminder_days_after_3     Int     @default(30)
+
+  // CP12 renewal reminder settings
+  cp12_reminders_enabled    Boolean @default(true)
+  cp12_reminder_days_before Int     @default(30)
+
+  // Appointment reminder settings
+  appointment_reminders_enabled Boolean @default(true)
+  appointment_reminder_hours    Int     @default(24)
+  appointment_reminder_message  String?
 
   // Bank details
   bank_name           String?
@@ -281,12 +320,28 @@ model Company {
   invoices         Invoice[]
   invoicePayments  InvoicePayment[]
   suppliers        Supplier[]
-  subcontractors   Subcontractor[]
-  enquiries        Enquiry[]
+  subcontractors          Subcontractor[]
+  subcontractorPayments   SubcontractorPayment[]
+  cisSufferedDeductions   CisSufferedDeduction[]
+  cisMonthlyReturns       CisMonthlyReturn[]
+  cisAuditLogs            CisAuditLog[]
+  enquiries             Enquiry[]
   timesheets       Timesheet[]
   todos            Todo[]
   gasCertificates  GasSafetyCertificate[]
   activeTimers     ActiveTimer[]
+  jobPhotos        JobPhoto[]
+  recurringJobs    RecurringJob[]
+  priceListItems   PriceListItem[]
+  kits             Kit[]
+  purchaseOrders   PurchaseOrder[]
+  jobStages        JobStage[]
+  jobTemplates      JobTemplate[]
+  communicationLogs CommunicationLog[]
+  jobServiceReports JobServiceReport[]
+  jsr_next_number   Int    @default(1)
+  jsr_prefix        String @default("JSR")
+  jsr_default_terms String?
 }
 
 model Customer {
@@ -302,12 +357,15 @@ model Customer {
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
 
-  company         Company                @relation(fields: [company_id], references: [id])
-  jobs            Job[]
-  quotes          Quote[]
-  invoices        Invoice[]
-  gasCertificates GasSafetyCertificate[]
-  enquiries       Enquiry[]
+  company           Company                @relation(fields: [company_id], references: [id])
+  jobs              Job[]
+  quotes            Quote[]
+  invoices          Invoice[]
+  gasCertificates   GasSafetyCertificate[]
+  enquiries         Enquiry[]
+  recurringJobs     RecurringJob[]
+  communicationLogs CommunicationLog[]
+  serviceReports    JobServiceReport[]
 }
 
 model Job {
@@ -322,12 +380,15 @@ model Job {
   duration_minutes Int?
   schedule_note    String?
   notes            String?
+  recurring_job_id String?
+  reminder_sent_at DateTime?
   created_at       DateTime  @default(now())
   updated_at       DateTime  @updatedAt
 
   company               Company                @relation(fields: [company_id], references: [id])
   customer              Customer               @relation(fields: [customer_id], references: [id])
   engineer              User?                  @relation("EngineerJobs", fields: [engineer_id], references: [id])
+  recurringJob          RecurringJob?          @relation(fields: [recurring_job_id], references: [id], onDelete: SetNull)
   quotes                Quote[]
   invoices              Invoice[]
   subcontractorPayments SubcontractorPayment[]
@@ -335,6 +396,11 @@ model Job {
   timesheets            Timesheet[]
   todos                 Todo[]
   activeTimers          ActiveTimer[]
+  photos                JobPhoto[]
+  purchaseOrders        PurchaseOrder[]
+  stages                JobStage[]
+  communicationLogs     CommunicationLog[]
+  serviceReports        JobServiceReport[]
 }
 
 model Quote {
@@ -368,6 +434,8 @@ model Quote {
   rejection_reason String?
 
   last_sent_at DateTime?
+  viewed_at    DateTime?
+  view_count   Int       @default(0)
 
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
@@ -411,6 +479,21 @@ model Invoice {
   is_reverse_charge        Boolean            @default(false)
   reverse_charge_wording   String?
   notes                    String?
+  last_reminder_sent_at    DateTime?
+  reminder_count           Int                @default(0)
+  reminders_disabled       Boolean            @default(false)
+  viewed_at                DateTime?
+  view_count               Int                @default(0)
+  // Online payment
+  payment_token            String?            @unique
+  stripe_payment_intent    String?
+  stripe_checkout_session  String?
+  paid_online              Boolean            @default(false)
+  // Customer payment report
+  payment_reported_at      DateTime?
+  payment_reported_method  String?
+  payment_reported_note    String?
+  payment_review_status    String?
   created_at               DateTime           @default(now())
   updated_at               DateTime           @updatedAt
 
@@ -418,7 +501,8 @@ model Invoice {
   customer Customer         @relation(fields: [customer_id], references: [id])
   job      Job?             @relation(fields: [job_id], references: [id])
   quote    Quote?           @relation(fields: [quote_id], references: [id])
-  payments InvoicePayment[]
+  payments  InvoicePayment[]
+  job_stage JobStage?
 
   @@unique([company_id, invoice_number])
   @@index([company_id])
@@ -445,34 +529,161 @@ model InvoicePayment {
 }
 
 model Subcontractor {
-  id              String   @id @default(cuid())
-  company_id      String
-  name            String
-  utr_number      String?
-  is_cis_verified Boolean  @default(false)
-  deduction_rate  Int      @default(20)
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id                  String    @id @default(cuid())
+  company_id          String
+  name                String
+
+  // Contact
+  email               String?
+  phone               String?
+  address             String?
+
+  // CIS identity
+  utr_number          String?   // Unique Taxpayer Reference — mandatory before CIS payment
+  ni_number           String?   // National Insurance — sole traders only
+  company_reg_number  String?   // Companies House number — limited companies only
+
+  // Subcontractor type: SOLE_TRADER | PARTNERSHIP | COMPANY
+  subcontractor_type  String    @default("SOLE_TRADER")
+
+  // CIS status: GROSS=0% | STANDARD=20% | HIGHER=30% (unverified default)
+  cis_status          String    @default("HIGHER")
+  deduction_rate      Int       @default(30)  // always matches cis_status
+
+  // HMRC verification record
+  is_cis_verified     Boolean   @default(false)
+  verification_number String?   // returned by HMRC when verified
+  verification_date   DateTime? // when verification was done
+  verified_by_user_id String?   // who ran the verification
+
+  is_active           Boolean   @default(true)
+  notes               String?
+
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
 
   company  Company                @relation(fields: [company_id], references: [id])
   payments SubcontractorPayment[]
+
+  @@index([company_id])
 }
 
-// CIS: deduction applied to labour_amount_pence ONLY — never to materials. See CLAUDE.md.
+// CIS: deduction applied to labour_amount_pence ONLY — never to materials/VAT/equipment. See CLAUDE.md.
 model SubcontractorPayment {
-  id                     String   @id @default(cuid())
-  job_id                 String
-  subcontractor_id       String
-  labour_amount_pence    Int
-  materials_amount_pence Int      @default(0)
-  deduction_rate         Int
-  deduction_amount_pence Int
-  net_payment_pence      Int
-  created_at             DateTime @default(now())
-  updated_at             DateTime @updatedAt
+  id               String   @id @default(cuid())
+  company_id       String
+  job_id           String?
+  subcontractor_id String
 
-  job           Job           @relation(fields: [job_id], references: [id])
+  // Amounts — CIS deduction on labour ONLY
+  gross_amount_pence      Int
+  labour_amount_pence     Int
+  materials_amount_pence  Int @default(0)
+  vat_amount_pence        Int @default(0)
+  equipment_hire_pence    Int @default(0)
+
+  // Deduction — snapshot at time of payment
+  deduction_rate          Int  // 0, 20, or 30
+  deduction_amount_pence  Int  // = labour_amount * (rate/100)
+  net_payment_pence       Int  // = gross - deduction
+
+  // CIS period
+  payment_date  DateTime // actual date paid — used for tax month grouping
+  tax_month     String   // e.g. "2026-05" = 6 May to 5 June period
+
+  description   String?
+  notes         String?
+  invoice_ref   String? // subcontractor's invoice number
+
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  company       Company       @relation(fields: [company_id], references: [id])
+  job           Job?          @relation(fields: [job_id], references: [id], onDelete: SetNull)
   subcontractor Subcontractor @relation(fields: [subcontractor_id], references: [id])
+
+  @@index([company_id])
+  @@index([company_id, tax_month])
+  @@index([company_id, subcontractor_id])
+}
+
+// CIS suffered deductions — CIS deducted FROM this firm by contractors who paid them.
+// Net CIS liability = contractor deductions paid out - suffered deductions received.
+model CisSufferedDeduction {
+  id         String @id @default(cuid())
+  company_id String
+
+  // The contractor who paid us (and deducted CIS from us)
+  contractor_name    String
+  contractor_utr     String?
+
+  // Amounts
+  gross_amount_pence      Int  // what they paid us (gross)
+  deduction_amount_pence  Int  // CIS they deducted from us
+  net_received_pence      Int  // what we actually received = gross - deduction
+
+  // Period — same 6th-5th format as SubcontractorPayment
+  payment_date DateTime
+  tax_month    String
+
+  invoice_ref String?
+  notes       String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company Company @relation(fields: [company_id], references: [id])
+
+  @@index([company_id])
+  @@index([company_id, tax_month])
+}
+
+model CisMonthlyReturn {
+  id         String @id @default(cuid())
+  company_id String
+  tax_month  String // "2026-05"
+
+  status         String    @default("DRAFT")
+  // DRAFT = not yet filed, SUBMITTED = filed with HMRC manually, ACCEPTED = future API
+  submitted_at   DateTime?
+  submitted_by   String?
+  hmrc_reference String?
+  notes          String?
+
+  // Snapshot totals at time of submission
+  total_gross_pence      Int     @default(0)
+  total_deductions_pence Int     @default(0)
+  subcontractor_count    Int     @default(0)
+  is_nil_return          Boolean @default(false)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company Company @relation(fields: [company_id], references: [id])
+
+  @@unique([company_id, tax_month])
+  @@index([company_id])
+}
+
+// Audit trail — every CIS calculation, export, and submission logged here for HMRC compliance.
+model CisAuditLog {
+  id         String @id @default(cuid())
+  company_id String
+
+  action             String   // CIS300_PDF_GENERATED | CIS300_CSV_EXPORTED | ANNUAL_CSV_EXPORTED | RETURN_SUBMITTED | PDS_GENERATED | PDS_EMAIL_SENT
+  tax_month          String?  // e.g. "2026-05"
+  tax_year           String?  // e.g. "2025-2026"
+  subcontractor_name String?
+  subcontractor_id   String?
+  performed_by       String   // user name
+  details            String?  // extra context (HMRC ref, sub count, etc.)
+
+  created_at DateTime @default(now())
+
+  company Company @relation(fields: [company_id], references: [id])
+
+  @@index([company_id])
+  @@index([company_id, created_at(sort: Desc)])
 }
 
 model GasSafetyCertificate {
@@ -614,6 +825,55 @@ model Supplier {
   company        Company         @relation(fields: [company_id], references: [id])
   bills          Bill[]
   purchaseOrders PurchaseOrder[]
+  priceListItems PriceListItem[]
+
+  @@index([company_id])
+}
+
+model PriceListItem {
+  id          String  @id @default(cuid())
+  company_id  String
+  supplier_id String?
+
+  name        String
+  description String?
+  item_code   String?
+  unit        String?
+
+  cost_price_pence  Int @default(0)
+  markup_percent    Int @default(20)
+  sell_price_pence  Int @default(0)
+
+  vat_type String @default("STANDARD")
+  vat_rate Int    @default(20)
+
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company  Company   @relation(fields: [company_id], references: [id])
+  supplier Supplier? @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
+
+  @@index([company_id])
+  @@index([company_id, supplier_id])
+  @@index([company_id, name])
+}
+
+model Kit {
+  id          String  @id @default(cuid())
+  company_id  String
+  name        String
+  description String?
+  items       Json    @default("[]")
+
+  total_cost_pence Int @default(0)
+  total_sell_pence Int @default(0)
+
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company Company @relation(fields: [company_id], references: [id])
 
   @@index([company_id])
 }
@@ -628,12 +888,35 @@ model Bill {
 }
 
 model PurchaseOrder {
-  id          String   @id @default(cuid())
+  id          String              @id @default(cuid())
   company_id  String
-  supplier_id String
-  created_at  DateTime @default(now())
+  job_id      String?
+  supplier_id String?
 
-  supplier Supplier @relation(fields: [supplier_id], references: [id])
+  po_number   String
+  status      PurchaseOrderStatus @default(DRAFT)
+
+  line_items Json @default("[]")
+  // Array of: { description, quantity, unit_cost_pence, total_cost_pence }
+
+  subtotal_pence Int @default(0)
+  total_pence    Int @default(0)
+
+  notes         String?
+  expected_date DateTime?
+  received_date DateTime?
+  last_sent_at  DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company  Company   @relation(fields: [company_id], references: [id])
+  job      Job?      @relation(fields: [job_id], references: [id], onDelete: SetNull)
+  supplier Supplier? @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
+
+  @@unique([company_id, po_number])
+  @@index([company_id])
+  @@index([company_id, job_id])
 }
 
 model Enquiry {
@@ -705,4 +988,177 @@ model Todo {
 
   @@index([company_id])
   @@index([assigned_to_id])
+}
+
+model JobPhoto {
+  id         String   @id @default(cuid())
+  company_id String
+  job_id     String
+  user_id    String
+  key        String
+  url        String
+  caption    String?
+  phase      String?
+  file_size  Int?
+  created_at DateTime @default(now())
+
+  company Company @relation(fields: [company_id], references: [id])
+  job     Job     @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id])
+
+  @@index([company_id])
+  @@index([job_id])
+}
+
+model RecurringJob {
+  id          String  @id @default(cuid())
+  company_id  String
+  customer_id String
+  engineer_id String?
+
+  title             String
+  description       String?
+  schedule_note     String?
+  duration_minutes  Int?
+
+  frequency_type  String
+  frequency_value Int
+
+  trigger_type  String
+  next_run_date DateTime?
+
+  assign_type    String   @default("MANUAL")
+  creation_mode  String   @default("ASSIGN")
+  scheduled_time String?
+  is_active      Boolean  @default(true)
+  last_run_at    DateTime?
+  jobs_created   Int      @default(0)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company  Company  @relation(fields: [company_id], references: [id])
+  customer Customer @relation(fields: [customer_id], references: [id])
+  engineer User?    @relation(fields: [engineer_id], references: [id])
+  jobs     Job[]
+
+  @@index([company_id])
+  @@index([company_id, is_active])
+}
+
+model JobStage {
+  id         String  @id @default(cuid())
+  company_id String
+  job_id     String
+  invoice_id String? @unique
+
+  name        String
+  order_index Int
+
+  amount_type  String  // 'PERCENTAGE' | 'FIXED'
+  percentage   Float?
+  amount_pence Int?
+
+  status String @default("PENDING")
+  // 'PENDING' | 'INVOICED' | 'PAID'
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company Company  @relation(fields: [company_id], references: [id])
+  job     Job      @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  invoice Invoice? @relation(fields: [invoice_id], references: [id], onDelete: SetNull)
+
+  @@index([company_id])
+  @@index([job_id])
+}
+
+model JobTemplate {
+  id          String  @id @default(cuid())
+  company_id  String
+
+  name                String
+  title               String
+  description         String?
+  schedule_note       String?
+  duration_minutes    Int?
+  default_engineer_id String?
+
+  is_active  Boolean @default(true)
+  use_count  Int     @default(0)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company          Company @relation(fields: [company_id], references: [id])
+  default_engineer User?   @relation(fields: [default_engineer_id], references: [id])
+
+  @@index([company_id])
+}
+
+model JobServiceReport {
+  id          String  @id @default(cuid())
+  company_id  String
+  job_id      String
+  customer_id String?
+
+  report_number String
+  status        String @default("DRAFT")
+
+  report_date DateTime @default(now())
+  title       String   @default("Job Service Report")
+
+  description String?
+  terms       String?
+
+  show_timesheets Boolean @default(true)
+  show_certs      Boolean @default(true)
+  show_photos     Boolean @default(true)
+  show_notes      Boolean @default(true)
+
+  acceptance_token String?  @unique
+  accepted_at      DateTime?
+  declined_at      DateTime?
+  decline_reason   String?
+
+  last_sent_at DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company  Company   @relation(fields: [company_id], references: [id])
+  job      Job       @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
+
+  @@unique([company_id, report_number])
+  @@index([company_id])
+  @@index([job_id])
+  @@index([acceptance_token])
+}
+
+model CommunicationLog {
+  id          String  @id @default(cuid())
+  company_id  String
+  customer_id String?
+  job_id      String?
+  invoice_id  String?
+  quote_id    String?
+
+  type      String
+  subject   String
+  to_email  String
+  reference String?
+  status    String   @default("SENT")
+  notes     String?
+
+  sent_at DateTime @default(now())
+
+  company  Company   @relation(fields: [company_id], references: [id])
+  customer Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
+  job      Job?      @relation(fields: [job_id], references: [id], onDelete: SetNull)
+
+  @@index([company_id])
+  @@index([company_id, customer_id])
+  @@index([company_id, job_id])
+  @@index([sent_at])
 }

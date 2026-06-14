@@ -17,7 +17,23 @@ async function bootstrap() {
   // /api/auth/* routes also get the correct Access-Control headers.
   expressApp.use(
     cors({
-      origin: process.env.FRONTEND_URL ?? 'http://localhost:3001',
+      origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+        const allowed = [
+          process.env.FRONTEND_URL,
+          process.env.FRONTEND_URL_WWW,
+          'http://localhost:3001',
+          'http://localhost:3000',
+        ].filter(Boolean);
+
+        // Allow requests with no origin (mobile apps, Postman, server-to-server)
+        if (!origin) return callback(null, true);
+
+        if (allowed.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`CORS: origin ${origin} not allowed`));
+        }
+      },
       credentials: true,
     }),
   );

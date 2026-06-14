@@ -30,6 +30,7 @@ export class UpdateSettingsDto {
   @IsOptional() @IsNumber() @Min(0) @Max(100) default_vat_rate?: number;
   @IsOptional() @IsBoolean() cis_registered?: boolean;
   @IsOptional() @IsString() cis_number?: string;
+  @IsOptional() @IsString() @MaxLength(20) cis_accounts_office_ref?: string;
 
   // Invoice defaults
   @IsOptional()
@@ -76,4 +77,18 @@ export class UpdateSettingsDto {
   @IsOptional() @IsBoolean() invoice_show_reference?: boolean;
   @IsOptional() @IsBoolean() invoice_show_site_address?: boolean;
   @IsOptional() @IsBoolean() invoice_show_payment_info?: boolean;
+
+  // Reminder settings
+  @IsOptional() @IsBoolean() payment_reminders_enabled?: boolean;
+  @IsOptional() @IsInt() @Min(0) @Max(90) reminder_days_before?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(90) reminder_days_after_1?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(90) reminder_days_after_2?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(90) reminder_days_after_3?: number;
+  @IsOptional() @IsBoolean() cp12_reminders_enabled?: boolean;
+  @IsOptional() @IsInt() @Min(7) @Max(90) cp12_reminder_days_before?: number;
+
+  // Appointment reminder settings
+  @IsOptional() @IsBoolean() appointment_reminders_enabled?: boolean;
+  @IsOptional() @IsInt() @Min(1) @Max(72) appointment_reminder_hours?: number;
+  @IsOptional() @IsString() appointment_reminder_message?: string;
 }

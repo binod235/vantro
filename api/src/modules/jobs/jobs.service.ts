@@ -7,6 +7,8 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
+import { RecurringJobsService } from '../recurring-jobs/recurring-jobs.service';
+import { JobNotificationsService } from './job-notifications.service';
 
 const JOB_INCLUDE = {
   customer: { select: { id: true, name: true, email: true, phone: true } },
@@ -15,7 +17,11 @@ const JOB_INCLUDE = {
 
 @Injectable()
 export class JobsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly recurringJobsService: RecurringJobsService,
+    private readonly jobNotificationsService: JobNotificationsService,
+  ) {}
 
   async create(dto: CreateJobDto, companyId: string) {
     await this.verifyCustomer(dto.customer_id, companyId);
@@ -84,11 +90,21 @@ export class JobsService {
     if (dto.customer_id) await this.verifyCustomer(dto.customer_id, companyId);
     if (dto.engineer_id) await this.verifyEngineer(dto.engineer_id, companyId);
 
-    return this.prisma.client.job.update({
+    const updated = await this.prisma.client.job.update({
       where: { id },
       data: dto,
       include: JOB_INCLUDE,
     });
+
+    if (dto.status === 'COMPLETED') {
+      void this.recurringJobsService.handleJobCompleted(id);
+    }
+
+    if (dto.engineer_id && dto.engineer_id !== existing.engineer_id) {
+      void this.jobNotificationsService.sendJobAssignedEmail(updated.id);
+    }
+
+    return updated;
   }
 
   findScheduled(
