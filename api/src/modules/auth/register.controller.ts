@@ -1,4 +1,4 @@
-import { Body, ConflictException, Controller, Post } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Post } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { auth } from './auth.config';
 import { Public } from './decorators/public.decorator';
@@ -25,9 +25,18 @@ export class RegisterController {
   async register(@Body() dto: RegisterDto) {
     const existing = await this.prisma.client.user.findUnique({
       where: { email: dto.email },
-      select: { id: true },
+      select: {
+        id: true,
+        accounts: { where: { providerId: 'credential' }, select: { id: true } },
+      },
     });
     if (existing) {
+      if (existing.accounts.length === 0) {
+        // User was invited but hasn't set a password yet
+        throw new BadRequestException(
+          'You have a pending invitation. Please check your email for the invite link, or contact your company owner to resend it.',
+        );
+      }
       throw new ConflictException('An account with that email already exists');
     }
 
@@ -66,6 +75,14 @@ export class RegisterController {
         data: { companyId: company.id, role: 'OWNER' },
       });
     });
+
+    // @vantro.dev emails bypass verification (internal test accounts)
+    if (dto.email.endsWith('@vantro.dev')) {
+      await this.prisma.client.user.update({
+        where: { email: dto.email },
+        data: { emailVerified: true },
+      });
+    }
 
     return { message: 'Account created' };
   }
