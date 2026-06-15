@@ -21,7 +21,37 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: false,
+    requireEmailVerification: true,
+
+    sendVerificationEmail: async ({ user, token }: { user: { email: string }; token: string }) => {
+      const callbackURL = `${process.env.FRONTEND_URL ?? 'http://localhost:3001'}/dashboard/jobs`;
+      const verifyUrl = `${process.env.BETTER_AUTH_URL ?? 'http://localhost:3000'}/api/auth/verify-email?token=${token}&callbackURL=${callbackURL}`;
+
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const { error } = await resend.emails.send({
+        from:    process.env.FROM_EMAIL ?? 'noreply@vantro.co.uk',
+        to:      user.email,
+        subject: 'Verify your Vantro account',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+            <h1 style="color:#2563eb;font-size:28px;margin-bottom:8px;">Welcome to Vantro</h1>
+            <p style="color:#475569;font-size:16px;margin-bottom:24px;">
+              Thanks for signing up! Please verify your email address to activate your account.
+            </p>
+            <a href="${verifyUrl}"
+              style="display:inline-block;background:#2563eb;color:white;
+                padding:14px 32px;border-radius:8px;text-decoration:none;
+                font-weight:600;font-size:16px;margin-bottom:24px;">
+              Verify Email Address →
+            </a>
+            <p style="color:#94a3b8;font-size:13px;">
+              This link expires in 24 hours. If you didn't create a Vantro account, ignore this email.
+            </p>
+          </div>
+        `,
+      });
+      if (error) throw new Error(`Verification email failed: ${error.message}`);
+    },
 
     // Reset token expires in 1 hour. Better Auth deletes it from the
     // verification table on use so the same token cannot be used twice.
@@ -59,8 +89,12 @@ export const auth = betterAuth({
   },
 
   session: {
-    expiresIn: 60 * 60 * 24 * 7,
-    updateAge: 60 * 60 * 24,
+    expiresIn: 60 * 60 * 24 * 30, // 30 days max
+    updateAge: 60 * 60 * 24,       // refresh daily
+    cookieCache: {
+      enabled: true,
+      maxAge:  60 * 5, // 5 min cache
+    },
   },
 
   trustedOrigins: [
