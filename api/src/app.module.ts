@@ -27,6 +27,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { CommsModule }    from './modules/comms/comms.module';
 import { JsrModule }     from './modules/job-service-reports/jsr.module';
 import { SubcontractorsModule } from './modules/subcontractors/subcontractors.module';
+import { HmrcModule }           from './modules/hmrc/hmrc.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { SubcontractorsModule } from './modules/subcontractors/subcontractors.mo
     CommsModule,
     JsrModule,
     SubcontractorsModule,
+    HmrcModule,
   ],
 })
 export class AppModule {}

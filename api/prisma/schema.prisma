@@ -295,6 +295,14 @@ model Company {
   appointment_reminder_hours    Int     @default(24)
   appointment_reminder_message  String?
 
+  // HMRC OAuth tokens
+  hmrc_access_token          String?
+  hmrc_refresh_token         String?
+  hmrc_token_expires_at      DateTime?
+  hmrc_connected             Boolean   @default(false)
+  hmrc_connected_at          DateTime?
+  hmrc_nino                  String?   // company's NI number (for CIS deductions API)
+
   // Bank details
   bank_name           String?
   bank_account_name   String?
