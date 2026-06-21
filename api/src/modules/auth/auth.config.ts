@@ -71,6 +71,19 @@ export const auth = betterAuth({
       });
       if (error) throw new Error(`Failed to send password reset email: ${error.message}`);
     },
+
+    // Successfully resetting a password via an emailed token is itself proof
+    // of email ownership — mirror the same logic already used for engineer
+    // invite-accept (staff.service.ts) so a previously-unverified owner isn't
+    // left permanently unable to sign in (requireEmailVerification blocks
+    // sign-in regardless of how correct the new password is). Called by
+    // Better Auth only after it has already updated the password.
+    onPasswordReset: async ({ user }) => {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true },
+      });
+    },
   },
 
   user: {
