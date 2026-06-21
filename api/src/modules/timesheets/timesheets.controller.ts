@@ -128,7 +128,7 @@ export class TimesheetsController {
     @CurrentUser() user: CurrentUserType,
     @Query('job_id') jobId: string,
   ) {
-    return this.timesheetsService.getTimerScheduleStatus(user.id, jobId);
+    return this.timesheetsService.getTimerScheduleStatus(user.companyId!, user.id, jobId);
   }
 
   /** Get active timer for a job (for current user). */

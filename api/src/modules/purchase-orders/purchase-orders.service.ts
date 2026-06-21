@@ -25,6 +25,20 @@ export class PurchaseOrdersService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private async verifyJob(jobId: string, companyId: string) {
+    const job = await this.prisma.client.job.findFirst({
+      where: { id: jobId, company_id: companyId },
+    });
+    if (!job) throw new NotFoundException('Job not found');
+  }
+
+  private async verifySupplier(supplierId: string, companyId: string) {
+    const supplier = await this.prisma.client.supplier.findFirst({
+      where: { id: supplierId, company_id: companyId },
+    });
+    if (!supplier) throw new NotFoundException('Supplier not found');
+  }
+
   private async generatePoNumber(
     tx: Parameters<Parameters<typeof this.prisma.client.$transaction>[0]>[0],
     companyId: string,
@@ -80,6 +94,9 @@ export class PurchaseOrdersService {
     notes?:         string;
     expected_date?: string;
   }) {
+    if (dto.job_id) await this.verifyJob(dto.job_id, companyId);
+    if (dto.supplier_id) await this.verifySupplier(dto.supplier_id, companyId);
+
     const items    = this.processItems(dto.line_items);
     const subtotal = this.calcSubtotal(items);
 
@@ -113,6 +130,8 @@ export class PurchaseOrdersService {
     if (po.status === 'RECEIVED') {
       throw new BadRequestException('Cannot edit a received purchase order');
     }
+    if (dto.job_id) await this.verifyJob(dto.job_id, companyId);
+    if (dto.supplier_id) await this.verifySupplier(dto.supplier_id, companyId);
 
     const rawItems = dto.line_items ?? (po.line_items as unknown as POLineItem[]);
     const items    = this.processItems(rawItems);

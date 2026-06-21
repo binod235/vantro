@@ -25,6 +25,7 @@ export function calcNetPayment(
   labourPence:    number,
   materialsPence: number,
   vatPence:       number,
+  
   equipmentPence: number,
   deductionPence: number,
 ): number {

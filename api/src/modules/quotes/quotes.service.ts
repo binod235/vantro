@@ -215,6 +215,7 @@ export class QuotesService {
     if (!['DRAFT', 'APPROVED', 'SENT'].includes(quote.status)) {
       throw new BadRequestException('Cannot edit quote in current status');
     }
+    if (dto.customer_id) await this.verifyCustomer(dto.customer_id, companyId);
     const rawItems = dto.line_items ?? (quote.line_items as unknown as InputLineItem[]);
     const { items, totals } = this.processLineItems(rawItems);
     const resetToDraft = ['APPROVED', 'SENT'].includes(quote.status);

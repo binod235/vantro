@@ -434,7 +434,7 @@ export class InvoicesService {
    const rawItems = dto.line_items ?? (invoice.line_items as unknown as InputLineItem[]);
     const { items, totals } = this.processLineItems(rawItems);
 
-    const newAmountDue = totals.total_pence - invoice.amount_paid_pence;
+    const newAmountDue = Math.max(0, totals.total_pence - invoice.amount_paid_pence);
 
     return this.prisma.client.invoice.update({
       where: { id: invoiceId },
@@ -756,6 +756,15 @@ export class InvoicesService {
           }));
           subtotalPence = job.timesheets.reduce((s, t) => s + t.total_pence, 0);
           vatPence      = Math.round(subtotalPence * 0.20);
+        }
+
+        if (lineItems.length === 0) {
+          results.push({
+            job_id: jobId, job_title: job.title, invoice_id: null,
+            invoice_number: null, success: false,
+            error: 'No accepted quote or timesheets to invoice from',
+          });
+          continue;
         }
 
         const totalPence = subtotalPence + vatPence;

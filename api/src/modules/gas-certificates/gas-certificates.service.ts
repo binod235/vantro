@@ -203,6 +203,24 @@ export class GasCertificatesService {
       throw new BadRequestException('Cannot edit a completed certificate');
     }
 
+    if (dto.customer_id) await this.verifyCustomer(dto.customer_id, companyId);
+
+    if (role === 'ENGINEER') {
+      if (dto.job_id) {
+        const job = await this.prisma.client.job.findFirst({
+          where: { id: dto.job_id, company_id: companyId, engineer_id: userId },
+        });
+        if (!job) {
+          throw new BadRequestException(
+            'You can only assign certificates to jobs assigned to you',
+          );
+        }
+      }
+      if (dto.engineer_id && dto.engineer_id !== userId) {
+        throw new BadRequestException('You cannot reassign a certificate to another engineer');
+      }
+    }
+
     return this.prisma.client.gasSafetyCertificate.update({
       where: { id: certId },
       data: {

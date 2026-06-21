@@ -1,5 +1,6 @@
 import { Controller, Post } from '@nestjs/common';
 import { RemindersService } from './reminders.service';
+import { CurrentUser, type CurrentUserType } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('reminders')
@@ -8,22 +9,22 @@ export class RemindersController {
   constructor(private readonly remindersService: RemindersService) {}
 
   @Post('trigger/payments')
-  triggerPayments() {
-    return this.remindersService.triggerPaymentReminders();
+  triggerPayments(@CurrentUser() user: CurrentUserType) {
+    return this.remindersService.triggerPaymentReminders(user.companyId!);
   }
 
   @Post('trigger/cp12')
-  triggerCp12() {
-    return this.remindersService.triggerCp12Reminders();
+  triggerCp12(@CurrentUser() user: CurrentUserType) {
+    return this.remindersService.triggerCp12Reminders(user.companyId!);
   }
 
   @Post('trigger/quote-reminders')
-  triggerQuoteReminders() {
-    return this.remindersService.triggerQuoteReminders();
+  triggerQuoteReminders(@CurrentUser() user: CurrentUserType) {
+    return this.remindersService.triggerQuoteReminders(user.companyId!);
   }
 
   @Post('trigger/appointments')
-  triggerAppointments() {
-    return this.remindersService.triggerAppointmentReminders();
+  triggerAppointments(@CurrentUser() user: CurrentUserType) {
+    return this.remindersService.triggerAppointmentReminders(user.companyId!);
   }
 }

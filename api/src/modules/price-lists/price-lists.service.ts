@@ -9,6 +9,13 @@ function calcSellPrice(costPence: number, markupPercent: number): number {
 export class PriceListsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async verifySupplier(supplierId: string, companyId: string) {
+    const supplier = await this.prisma.client.supplier.findFirst({
+      where: { id: supplierId, company_id: companyId },
+    });
+    if (!supplier) throw new NotFoundException('Supplier not found');
+  }
+
   // ── Price List Items ──────────────────────────────────────────────────────
 
   async listItems(
@@ -44,6 +51,7 @@ export class PriceListsService {
     vat_type?: string;
     vat_rate?: number;
   }) {
+    if (dto.supplier_id) await this.verifySupplier(dto.supplier_id, companyId);
     const sellPrice = calcSellPrice(dto.cost_price_pence, dto.markup_percent);
     return this.prisma.client.priceListItem.create({
       data: {
@@ -79,6 +87,7 @@ export class PriceListsService {
       where: { id: itemId, company_id: companyId },
     });
     if (!item) throw new NotFoundException('Item not found');
+    if (dto.supplier_id) await this.verifySupplier(dto.supplier_id, companyId);
 
     const costPrice = dto.cost_price_pence ?? item.cost_price_pence;
     const markup    = dto.markup_percent   ?? item.markup_percent;
@@ -116,6 +125,8 @@ export class PriceListsService {
       vat_rate?: string;
     }[],
   ) {
+    if (supplierId) await this.verifySupplier(supplierId, companyId);
+
     let imported = 0;
     let skipped  = 0;
 

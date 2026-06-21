@@ -20,12 +20,21 @@ const TIMESHEET_INCLUDE = {
 export class TimesheetsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async verifyJob(jobId: string, companyId: string) {
+    const job = await this.prisma.client.job.findFirst({
+      where: { id: jobId, company_id: companyId },
+    });
+    if (!job) throw new NotFoundException('Job not found');
+  }
+
   async create(
     companyId: string,
     requestingUserId: string,
     requestingRole: string,
     dto: CreateTimesheetDto,
   ) {
+    if (dto.job_id) await this.verifyJob(dto.job_id, companyId);
+
     const userId =
       requestingRole === 'OWNER' ? (dto.user_id ?? requestingUserId) : requestingUserId;
 
@@ -137,6 +146,7 @@ export class TimesheetsService {
     if (ts.is_approved) {
       throw new ForbiddenException('Cannot edit an approved timesheet');
     }
+    if (dto.job_id) await this.verifyJob(dto.job_id, companyId);
 
     const startTime = dto.start_time ?? ts.start_time;
     const finishTime = dto.finish_time ?? ts.finish_time;
@@ -287,13 +297,13 @@ export class TimesheetsService {
 
   // ── Schedule check helpers ────────────────────────────────────────────────────
 
-  private async checkClockInSchedule(jobId: string): Promise<{
+  private async checkClockInSchedule(companyId: string, jobId: string): Promise<{
     type: 'NORMAL' | 'EARLY' | 'UNPLANNED';
     minutesEarly?: number;
     scheduledAt?: Date;
   }> {
-    const job = await this.prisma.client.job.findUnique({
-      where: { id: jobId },
+    const job = await this.prisma.client.job.findFirst({
+      where: { id: jobId, company_id: companyId },
       select: { scheduled_at: true, duration_minutes: true },
     });
 
@@ -309,13 +319,13 @@ export class TimesheetsService {
     return { type: 'NORMAL', scheduledAt: scheduled };
   }
 
-  private async checkClockOutSchedule(jobId: string): Promise<{
+  private async checkClockOutSchedule(companyId: string, jobId: string): Promise<{
     type: 'NORMAL' | 'EARLY_OUT' | 'LATE_OUT';
     minutesEarly?: number;
     minutesLate?: number;
   }> {
-    const job = await this.prisma.client.job.findUnique({
-      where: { id: jobId },
+    const job = await this.prisma.client.job.findFirst({
+      where: { id: jobId, company_id: companyId },
       select: { scheduled_at: true, duration_minutes: true },
     });
 
@@ -338,10 +348,10 @@ export class TimesheetsService {
 
   // ── Get combined schedule status ──────────────────────────────────────────────
 
-  async getTimerScheduleStatus(userId: string, jobId: string) {
+  async getTimerScheduleStatus(companyId: string, userId: string, jobId: string) {
     const [clockIn, clockOut, active] = await Promise.all([
-      this.checkClockInSchedule(jobId),
-      this.checkClockOutSchedule(jobId),
+      this.checkClockInSchedule(companyId, jobId),
+      this.checkClockOutSchedule(companyId, jobId),
       this.prisma.client.activeTimer.findUnique({
         where: { user_id_job_id: { user_id: userId, job_id: jobId } },
       }),

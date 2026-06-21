@@ -171,9 +171,9 @@ export class CisEngineService {
     const endYear  = month === 12 ? year + 1 : year;
     const periodEnd = new Date(endYear, endMonth - 1, 5);
 
-    const deadlineMonth = endMonth === 12 ? 1 : endMonth + 1;
-    const deadlineYear  = endMonth === 12 ? endYear + 1 : endYear;
-    const deadline = new Date(deadlineYear, deadlineMonth - 1, 19);
+    // CIS300 deadline is the 19th of the same month the tax period ends in
+    // (e.g. period 6 Apr-5 May -> deadline 19 May), NOT the month after.
+    const deadline = new Date(endYear, endMonth - 1, 19);
 
     return { periodStart, periodEnd, deadline };
   }

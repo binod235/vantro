@@ -27,11 +27,12 @@ export class RemindersService {
 
   // ── Run every day at 09:00 — quote acceptance reminders ──────────────────
   @Cron('0 9 * * *')
-  async sendQuoteAcceptanceReminders() {
+  async sendQuoteAcceptanceReminders(companyId?: string) {
     const now = new Date();
     const followUpDays = [3, 7];
 
     const companies = await this.prisma.client.company.findMany({
+      where:  companyId ? { id: companyId } : undefined,
       select: { id: true, name: true },
     });
 
@@ -113,12 +114,12 @@ export class RemindersService {
 
   // ── Payment Reminders ─────────────────────────────────────────────────────
 
-  async sendPaymentReminders() {
+  async sendPaymentReminders(companyId?: string) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const companies = await this.prisma.client.company.findMany({
-      where: { payment_reminders_enabled: true },
+      where: { payment_reminders_enabled: true, ...(companyId ? { id: companyId } : {}) },
       select: {
         id:                   true,
         name:                 true,
@@ -284,12 +285,12 @@ export class RemindersService {
 
   // ── CP12 Renewal Reminders ────────────────────────────────────────────────
 
-  async sendCp12Renewals() {
+  async sendCp12Renewals(companyId?: string) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const companies = await this.prisma.client.company.findMany({
-      where: { cp12_reminders_enabled: true },
+      where: { cp12_reminders_enabled: true, ...(companyId ? { id: companyId } : {}) },
       select: {
         id:                        true,
         name:                      true,
@@ -406,11 +407,11 @@ export class RemindersService {
   // ── Appointment Reminders ─────────────────────────────────────────────────
 
   @Cron('0 9 * * *')
-  async sendAppointmentReminders() {
+  async sendAppointmentReminders(companyId?: string) {
     this.logger.log('Running appointment reminders...');
 
     const companies = await this.prisma.client.company.findMany({
-      where: { appointment_reminders_enabled: true },
+      where: { appointment_reminders_enabled: true, ...(companyId ? { id: companyId } : {}) },
       select: {
         id: true,
         name: true,
@@ -564,23 +565,23 @@ export class RemindersService {
 
   // ── Manual triggers (for testing) ────────────────────────────────────────
 
-  async triggerPaymentReminders() {
-    await this.sendPaymentReminders();
+  async triggerPaymentReminders(companyId: string) {
+    await this.sendPaymentReminders(companyId);
     return { triggered: true };
   }
 
-  async triggerCp12Reminders() {
-    await this.sendCp12Renewals();
+  async triggerCp12Reminders(companyId: string) {
+    await this.sendCp12Renewals(companyId);
     return { triggered: true };
   }
 
-  async triggerQuoteReminders() {
-    await this.sendQuoteAcceptanceReminders();
+  async triggerQuoteReminders(companyId: string) {
+    await this.sendQuoteAcceptanceReminders(companyId);
     return { triggered: true };
   }
 
-  async triggerAppointmentReminders() {
-    await this.sendAppointmentReminders();
+  async triggerAppointmentReminders(companyId: string) {
+    await this.sendAppointmentReminders(companyId);
     return { triggered: true };
   }
 }
