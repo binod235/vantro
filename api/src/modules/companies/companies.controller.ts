@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -88,7 +89,23 @@ export class CompaniesController {
 
   @Post('me/logo')
   @Roles('OWNER')
-  @UseInterceptors(FileInterceptor('logo', { storage: memoryStorage() }))
+  @UseInterceptors(
+    FileInterceptor('logo', {
+      storage: memoryStorage(),
+      // Hard cap at the multer/stream level so an oversized upload is
+      // rejected before it's fully buffered into memory — the 2MB business
+      // rule is enforced separately in CompaniesService.uploadLogo.
+      limits: { fileSize: 3 * 1024 * 1024 },
+      fileFilter: (_, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+        if (allowed.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Logo must be PNG, JPG, or WebP'), false);
+        }
+      },
+    }),
+  )
   uploadLogo(
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: CurrentUserType,
