@@ -19,13 +19,12 @@ export const auth = betterAuth({
 
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
 
-  emailAndPassword: {
-    enabled: true,
-    requireEmailVerification: true,
-
-    sendVerificationEmail: async ({ user, token }: { user: { email: string }; token: string }) => {
-      const callbackURL = `${process.env.FRONTEND_URL ?? 'http://localhost:3001'}/dashboard/jobs`;
-      const verifyUrl = `${process.env.BETTER_AUTH_URL ?? 'http://localhost:3000'}/api/auth/verify-email?token=${token}&callbackURL=${callbackURL}`;
+  emailVerification: {
+    sendOnSignUp: true,
+    sendVerificationEmail: async ({ user, token }) => {
+      const verificationUrl =
+        `${process.env.BETTER_AUTH_URL ?? 'http://localhost:3000'}/api/auth/verify-email?token=${token}` +
+        `&callbackURL=${encodeURIComponent((process.env.FRONTEND_URL ?? 'http://localhost:3001') + '/dashboard/jobs')}`;
 
       const resend = new Resend(process.env.RESEND_API_KEY);
       const { error } = await resend.emails.send({
@@ -38,7 +37,7 @@ export const auth = betterAuth({
             <p style="color:#475569;font-size:16px;margin-bottom:24px;">
               Thanks for signing up! Please verify your email address to activate your account.
             </p>
-            <a href="${verifyUrl}"
+            <a href="${verificationUrl}"
               style="display:inline-block;background:#2563eb;color:white;
                 padding:14px 32px;border-radius:8px;text-decoration:none;
                 font-weight:600;font-size:16px;margin-bottom:24px;">
@@ -50,8 +49,16 @@ export const auth = betterAuth({
           </div>
         `,
       });
-      if (error) throw new Error(`Verification email failed: ${error.message}`);
+      if (error) {
+        console.error('Verification email failed', error);
+        throw new Error(`Verification email failed: ${error.message}`);
+      }
     },
+  },
+
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: true,
 
     // Reset token expires in 1 hour. Better Auth deletes it from the
     // verification table on use so the same token cannot be used twice.
