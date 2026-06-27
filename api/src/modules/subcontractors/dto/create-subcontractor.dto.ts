@@ -9,7 +9,6 @@ import {
 } from 'class-validator';
 
 const SUBCONTRACTOR_TYPES = ['SOLE_TRADER', 'PARTNERSHIP', 'COMPANY'] as const;
-const CIS_STATUSES        = ['GROSS', 'STANDARD', 'HIGHER'] as const;
 
 export class CreateSubcontractorDto {
   @IsString()
@@ -48,9 +47,10 @@ export class CreateSubcontractorDto {
   @IsIn(SUBCONTRACTOR_TYPES)
   subcontractor_type?: string;
 
-  @IsOptional()
-  @IsIn(CIS_STATUSES)
-  cis_status?: string;
+  // No cis_status field here, deliberately — HMRC's own process is that an
+  // unverified subcontractor is always Higher rate (30%). CIS status can
+  // only change via the Verify action (see VerifySubcontractorDto), never
+  // at creation.
 
   @IsOptional()
   @IsString()

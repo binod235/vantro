@@ -1,4 +1,4 @@
-import { IsIn, IsNotEmpty, IsString } from 'class-validator';
+import { IsDateString, IsIn, IsNotEmpty, IsString } from 'class-validator';
 
 const CIS_STATUSES = ['GROSS', 'STANDARD', 'HIGHER'] as const;
 
@@ -9,4 +9,7 @@ export class VerifySubcontractorDto {
   @IsString()
   @IsNotEmpty()
   verification_number: string;
+
+  @IsDateString()
+  verification_date: string;
 }

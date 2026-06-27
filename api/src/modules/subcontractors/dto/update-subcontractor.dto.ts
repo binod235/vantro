@@ -1,6 +1,5 @@
 import {
   IsBoolean,
-  IsDateString,
   IsEmail,
   IsIn,
   IsOptional,
@@ -9,7 +8,6 @@ import {
 } from 'class-validator';
 
 const SUBCONTRACTOR_TYPES = ['SOLE_TRADER', 'PARTNERSHIP', 'COMPANY'] as const;
-const CIS_STATUSES        = ['GROSS', 'STANDARD', 'HIGHER'] as const;
 
 export class UpdateSubcontractorDto {
   @IsOptional()
@@ -48,17 +46,10 @@ export class UpdateSubcontractorDto {
   @IsIn(SUBCONTRACTOR_TYPES)
   subcontractor_type?: string;
 
-  @IsOptional()
-  @IsIn(CIS_STATUSES)
-  cis_status?: string;
-
-  @IsOptional()
-  @IsString()
-  verification_number?: string | null;
-
-  @IsOptional()
-  @IsDateString()
-  verification_date?: string | null;
+  // cis_status, verification_number and verification_date are deliberately
+  // absent here — they can only change together via the Verify action
+  // (VerifySubcontractorDto / recordVerification), matching HMRC's real
+  // process and avoiding a back door that bypasses verification.
 
   @IsOptional()
   @IsString()

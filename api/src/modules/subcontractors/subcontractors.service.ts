@@ -36,9 +36,8 @@ export class SubcontractorsService {
   }
 
   create(companyId: string, dto: CreateSubcontractorDto) {
-    const cisStatus     = dto.cis_status ?? 'HIGHER'; // default = unverified (safest)
-    const deductionRate = CIS_RATES[cisStatus] ?? 30;
-
+    // HMRC's rule: an unverified subcontractor is always Higher rate (30%).
+    // CIS status is never settable at creation — only via the Verify action.
     return this.prisma.client.subcontractor.create({
       data: {
         company_id:          companyId,
@@ -50,9 +49,9 @@ export class SubcontractorsService {
         ni_number:           dto.ni_number           ?? null,
         company_reg_number:  dto.company_reg_number  ?? null,
         subcontractor_type:  dto.subcontractor_type  ?? 'SOLE_TRADER',
-        cis_status:          cisStatus,
-        deduction_rate:      deductionRate,
-        is_cis_verified:     cisStatus !== 'HIGHER',
+        cis_status:          'HIGHER',
+        deduction_rate:      CIS_RATES.HIGHER,
+        is_cis_verified:     false,
         notes:               dto.notes               ?? null,
       },
     });
@@ -60,9 +59,6 @@ export class SubcontractorsService {
 
   async update(companyId: string, id: string, dto: UpdateSubcontractorDto) {
     await this.findOne(companyId, id);
-
-    const deductionRate = dto.cis_status != null ? (CIS_RATES[dto.cis_status] ?? 20) : undefined;
-    const isVerified    = dto.cis_status != null ? dto.cis_status !== 'HIGHER' : undefined;
 
     return this.prisma.client.subcontractor.update({
       where: { id },
@@ -77,9 +73,6 @@ export class SubcontractorsService {
         ...(dto.subcontractor_type !== undefined && { subcontractor_type: dto.subcontractor_type }),
         ...(dto.notes              !== undefined && { notes:              dto.notes }),
         ...(dto.is_active          !== undefined && { is_active:          dto.is_active }),
-        ...(dto.cis_status         !== undefined && { cis_status: dto.cis_status, deduction_rate: deductionRate, is_cis_verified: isVerified }),
-        ...(dto.verification_number !== undefined && { verification_number: dto.verification_number }),
-        ...(dto.verification_date   !== undefined && { verification_date:   dto.verification_date ? new Date(dto.verification_date) : null }),
       },
     });
   }
@@ -93,7 +86,7 @@ export class SubcontractorsService {
         deduction_rate:      CIS_RATES[dto.cis_status],
         is_cis_verified:     dto.cis_status !== 'HIGHER',
         verification_number: dto.verification_number,
-        verification_date:   new Date(),
+        verification_date:   new Date(dto.verification_date),
         verified_by_user_id: userId,
       },
     });
