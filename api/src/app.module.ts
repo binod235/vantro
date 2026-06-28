@@ -18,6 +18,7 @@ import { TodosModule } from './modules/todos/todos.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { CreditNotesModule } from './modules/credit-notes/credit-notes.module';
+import { RecurringInvoicesModule } from './modules/recurring-invoices/recurring-invoices.module';
 import { QuotesModule } from './modules/quotes/quotes.module';
 import { GasCertificatesModule } from './modules/gas-certificates/gas-certificates.module';
 import { RemindersModule }       from './modules/reminders/reminders.module';
@@ -53,6 +54,7 @@ import { HmrcModule }           from './modules/hmrc/hmrc.module';
     BillingModule,
     InvoicesModule,
     CreditNotesModule,
+    RecurringInvoicesModule,
     QuotesModule,
     GasCertificatesModule,
     RemindersModule,

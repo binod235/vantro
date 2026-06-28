@@ -78,12 +78,20 @@ enum InvoiceSourceType {
   MANUAL
   JOB
   QUOTE
+  RECURRING
 }
 
 enum CreditNoteStatus {
   DRAFT
   ISSUED
   VOID
+}
+
+enum RecurringInvoiceFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
 }
 
 enum QuoteInvoiceMode {
@@ -337,6 +345,7 @@ model Company {
   invoices         Invoice[]
   invoicePayments  InvoicePayment[]
   creditNotes      CreditNote[]
+  recurringInvoices RecurringInvoice[]
   suppliers        Supplier[]
   subcontractors          Subcontractor[]
   subcontractorPayments   SubcontractorPayment[]
@@ -380,6 +389,7 @@ model Customer {
   quotes            Quote[]
   invoices          Invoice[]
   creditNotes       CreditNote[]
+  recurringInvoices RecurringInvoice[]
   gasCertificates   GasSafetyCertificate[]
   enquiries         Enquiry[]
   recurringJobs     RecurringJob[]
@@ -477,6 +487,7 @@ model Invoice {
   customer_id              String
   job_id                   String?
   quote_id                 String?
+  recurring_invoice_id     String?
   invoice_number           String
   status                   InvoiceStatus      @default(DRAFT)
   invoice_type             InvoiceType        @default(STANDARD)
@@ -516,10 +527,11 @@ model Invoice {
   created_at               DateTime           @default(now())
   updated_at               DateTime           @updatedAt
 
-  company  Company          @relation(fields: [company_id], references: [id])
-  customer Customer         @relation(fields: [customer_id], references: [id])
-  job      Job?             @relation(fields: [job_id], references: [id])
-  quote    Quote?           @relation(fields: [quote_id], references: [id])
+  company          Company           @relation(fields: [company_id], references: [id])
+  customer         Customer          @relation(fields: [customer_id], references: [id])
+  job              Job?              @relation(fields: [job_id], references: [id])
+  quote            Quote?            @relation(fields: [quote_id], references: [id])
+  recurringInvoice RecurringInvoice? @relation(fields: [recurring_invoice_id], references: [id], onDelete: SetNull)
   payments    InvoicePayment[]
   job_stage   JobStage?
   creditNotes CreditNote[]
@@ -585,6 +597,50 @@ model CreditNote {
   @@index([company_id, status])
   @@index([customer_id])
   @@index([invoice_id])
+}
+
+// Template that auto-generates a real Invoice on a schedule — e.g. "annual
+// boiler service, £80/month". The cron in RecurringInvoicesService finds
+// is_active templates due today and calls generateInvoice() on each, which
+// creates a normal Invoice row and advances next_run_date. See
+// recurring-jobs' RecurringJob model for the equivalent pattern on the jobs
+// side — this deliberately mirrors it field-for-field where it applies.
+model RecurringInvoice {
+  id          String   @id @default(cuid())
+  company_id  String
+  customer_id String
+
+  title String
+
+  line_items     Json @default("[]")
+  subtotal_pence Int  @default(0)
+  vat_pence      Int  @default(0)
+  total_pence    Int  @default(0)
+
+  frequency     RecurringInvoiceFrequency
+  next_run_date DateTime
+  day_of_month  Int?
+
+  payment_terms_days Int @default(30)
+
+  auto_email Boolean @default(false)
+  notes      String?
+
+  is_active Boolean @default(true)
+
+  invoices_generated Int       @default(0)
+  last_generated_at  DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company  Company   @relation(fields: [company_id], references: [id])
+  customer Customer  @relation(fields: [customer_id], references: [id])
+  invoices Invoice[]
+
+  @@index([company_id])
+  @@index([customer_id])
+  @@index([is_active, next_run_date])
 }
 
 model Subcontractor {
