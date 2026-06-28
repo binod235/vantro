@@ -234,51 +234,6 @@ export class InvoicesService {
     });
   }
 
-  // ── Create from job ────────────────────────────────────────────────────────
-
-  async createFromJob(companyId: string, jobId: string) {
-    const job = await this.prisma.client.job.findFirst({
-      where: { id: jobId, company_id: companyId },
-      include: { customer: true },
-    });
-    if (!job) throw new NotFoundException('Job not found');
-
-    const lineItem = calcLineItem(
-      {
-        description: `Services — ${job.title}`,
-        quantity: 1,
-        unit_price_pence: 0,
-        vat_type: 'STANDARD',
-        vat_rate: 20,
-      },
-      0,
-    );
-    const totals = calcTotals([lineItem]);
-
-    return this.prisma.client.$transaction(async (tx) => {
-      const invoiceNumber = await this.generateInvoiceNumber(tx, companyId);
-
-      return tx.invoice.create({
-        data: {
-          company_id: companyId,
-          customer_id: job.customer_id,
-          job_id: jobId,
-          invoice_number: invoiceNumber,
-          source_type: 'JOB',
-          line_items: [lineItem] as never,
-          subtotal_pence: totals.subtotal_pence,
-          vat_amount_pence: totals.vat_amount_pence,
-          reverse_charge_vat_pence: totals.reverse_charge_vat_pence,
-          total_pence: totals.total_pence,
-          amount_due_pence: totals.total_pence,
-          is_reverse_charge: false,
-          notes: job.description,
-        },
-        include: INVOICE_INCLUDE,
-      });
-    });
-  }
-
   // ── Create from quote ─────────────────────────────────────────────────────
 
   async createFromQuote(companyId: string, quoteId: string, dto: CreateInvoiceFromQuoteDto) {

@@ -78,15 +78,6 @@ export class InvoicesController {
     return this.invoicesService.createFromQuote(user.companyId!, quoteId, dto);
   }
 
-  // ── POST /invoices/from-job/:jobId ────────────────────────────────────────
-  @Post('from-job/:jobId')
-  createFromJob(
-    @CurrentUser() user: CurrentUserType,
-    @Param('jobId') jobId: string,
-  ) {
-    return this.invoicesService.createFromJob(user.companyId!, jobId);
-  }
-
   // ── GET /invoices/:id/viewed — public tracking pixel ─────────────────────
   @Get(':id/viewed')
   @Public()
