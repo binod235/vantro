@@ -80,6 +80,12 @@ enum InvoiceSourceType {
   QUOTE
 }
 
+enum CreditNoteStatus {
+  DRAFT
+  ISSUED
+  VOID
+}
+
 enum QuoteInvoiceMode {
   ENTIRE_QUOTE
   SELECTED_LINE_ITEMS
@@ -261,6 +267,9 @@ model Company {
   default_payment_terms String? @default("Payment due within 30 days")
   default_invoice_notes String?
 
+  credit_note_prefix      String @default("CN")
+  credit_note_next_number Int    @default(1)
+
   quote_prefix      String  @default("QUO")
   quote_next_number Int     @default(1)
   quote_expiry_days Int     @default(30)
@@ -327,6 +336,7 @@ model Company {
   quotes           Quote[]
   invoices         Invoice[]
   invoicePayments  InvoicePayment[]
+  creditNotes      CreditNote[]
   suppliers        Supplier[]
   subcontractors          Subcontractor[]
   subcontractorPayments   SubcontractorPayment[]
@@ -369,6 +379,7 @@ model Customer {
   jobs              Job[]
   quotes            Quote[]
   invoices          Invoice[]
+  creditNotes       CreditNote[]
   gasCertificates   GasSafetyCertificate[]
   enquiries         Enquiry[]
   recurringJobs     RecurringJob[]
@@ -509,8 +520,9 @@ model Invoice {
   customer Customer         @relation(fields: [customer_id], references: [id])
   job      Job?             @relation(fields: [job_id], references: [id])
   quote    Quote?           @relation(fields: [quote_id], references: [id])
-  payments  InvoicePayment[]
-  job_stage JobStage?
+  payments    InvoicePayment[]
+  job_stage   JobStage?
+  creditNotes CreditNote[]
 
   @@unique([company_id, invoice_number])
   @@index([company_id])
@@ -534,6 +546,45 @@ model InvoicePayment {
 
   @@index([company_id])
   @@index([company_id, invoice_id])
+}
+
+// Credit notes reduce what a customer owes — used for wrong VAT rate, disputed
+// work, cancelled jobs after invoicing, or overcharged materials. They can
+// stand alone or be linked to an invoice; when issued against an invoice they
+// reduce that invoice's amount_due_pence. See CreditNotesService for the
+// calculation rules (deliberately simpler than Invoice — no reverse charge,
+// no per-line VAT type, just a flat vat_rate per line).
+model CreditNote {
+  id                 String           @id @default(cuid())
+  company_id         String
+  customer_id        String
+  invoice_id         String?
+  credit_note_number String
+  status             CreditNoteStatus @default(DRAFT)
+  reason             String
+
+  line_items       Json @default("[]")
+  subtotal_pence   Int  @default(0)
+  vat_amount_pence Int  @default(0)
+  total_pence      Int  @default(0)
+
+  date       DateTime  @default(now())
+  issued_at  DateTime?
+  voided_at  DateTime?
+  notes      String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company  Company  @relation(fields: [company_id], references: [id])
+  customer Customer @relation(fields: [customer_id], references: [id])
+  invoice  Invoice? @relation(fields: [invoice_id], references: [id])
+
+  @@unique([company_id, credit_note_number])
+  @@index([company_id])
+  @@index([company_id, status])
+  @@index([customer_id])
+  @@index([invoice_id])
 }
 
 model Subcontractor {
