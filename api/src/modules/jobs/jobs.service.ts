@@ -13,6 +13,7 @@ import { JobNotificationsService } from './job-notifications.service';
 const JOB_INCLUDE = {
   customer: { select: { id: true, name: true, email: true, phone: true } },
   engineer: { select: { id: true, name: true, email: true } },
+  _count: { select: { photos: true, gasCertificates: true } },
 } as const;
 
 @Injectable()

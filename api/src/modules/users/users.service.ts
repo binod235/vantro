@@ -20,6 +20,7 @@ const USER_SELECT = {
   companyId: true,
   emailVerified: true,
   calendar_colour: true,
+  phone: true,
   gas_safe_number: true,
   corgi_number: true,
   qualification: true,
@@ -115,6 +116,7 @@ export class UsersService {
   }
 
   async updateMe(userId: string, dto: {
+    phone?: string | null;
     gas_safe_number?: string | null;
     corgi_number?: string | null;
     qualification?: string | null;

@@ -38,7 +38,10 @@ export class JsrController {
     return this.jsr.declineByToken(token, body.reason);
   }
 
-  // ── Authenticated owner routes ────────────────────────────────────────────
+  // ── Authenticated routes ───────────────────────────────────────────────────
+  // Engineers can view/create/send/download reports for their own field work
+  // (they're the ones on site getting sign-off) — editing display options and
+  // deleting reports stays OWNER-only, see below.
 
   @Roles('OWNER')
   @Get('job/:jobId/preview')
@@ -49,7 +52,7 @@ export class JsrController {
     return this.jsr.previewJobData(user.companyId!, jobId);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'ENGINEER')
   @Get('job/:jobId')
   async listByJob(
     @Param('jobId') jobId: string,
@@ -58,7 +61,7 @@ export class JsrController {
     return this.jsr.list(user.companyId!, jobId);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'ENGINEER')
   @Post('job/:jobId')
   async create(
     @Param('jobId') jobId: string,
@@ -67,7 +70,7 @@ export class JsrController {
     return this.jsr.create(user.companyId!, jobId);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'ENGINEER')
   @Get(':id')
   async getOne(
     @Param('id') id: string,
@@ -94,7 +97,7 @@ export class JsrController {
     return this.jsr.update(user.companyId!, id, body);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'ENGINEER')
   @Post(':id/send')
   @HttpCode(HttpStatus.OK)
   async send(
@@ -104,7 +107,7 @@ export class JsrController {
     return this.jsr.sendToCustomer(user.companyId!, id);
   }
 
-  @Roles('OWNER')
+  @Roles('OWNER', 'ENGINEER')
   @Get(':id/pdf')
   async downloadPdf(
     @Param('id') id: string,

@@ -164,6 +164,7 @@ model User {
   invite_token      String?   @unique
   invite_expires_at DateTime?
   calendar_colour   String?
+  phone             String?
   gas_safe_number   String?
   corgi_number      String?
   qualification     String?

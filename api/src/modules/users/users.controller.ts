@@ -14,6 +14,10 @@ import { IsOptional, IsString, Matches } from 'class-validator';
 class UpdateMeDto {
   @IsOptional()
   @IsString()
+  phone?: string | null;
+
+  @IsOptional()
+  @IsString()
   gas_safe_number?: string | null;
 
   @IsOptional()
