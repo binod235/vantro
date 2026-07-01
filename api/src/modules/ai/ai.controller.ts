@@ -27,7 +27,7 @@ class ChatDto {
   confirmedAction?: { tool: string; args: Record<string, unknown> };
 }
 
-@Controller('api/ai')
+@Controller('ai')
 export class AiController {
   constructor(private readonly ai: AiService) {}
 
