@@ -30,6 +30,7 @@ import { CommsModule }    from './modules/comms/comms.module';
 import { JsrModule }     from './modules/job-service-reports/jsr.module';
 import { SubcontractorsModule } from './modules/subcontractors/subcontractors.module';
 import { HmrcModule }           from './modules/hmrc/hmrc.module';
+import { AiModule }             from './modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { HmrcModule }           from './modules/hmrc/hmrc.module';
     JsrModule,
     SubcontractorsModule,
     HmrcModule,
+    AiModule,
   ],
 })
 export class AppModule {}

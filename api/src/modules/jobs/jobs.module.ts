@@ -12,6 +12,6 @@ import { RecurringJobsModule } from '../recurring-jobs/recurring-jobs.module';
   imports:     [StorageModule, RecurringJobsModule],
   controllers: [JobsController],
   providers:   [JobsService, JobPhotosService, JobNotificationsService, JobStagesService, JobTemplatesService],
-  exports:     [JobNotificationsService],
+  exports:     [JobNotificationsService, JobsService],
 })
 export class JobsModule {}

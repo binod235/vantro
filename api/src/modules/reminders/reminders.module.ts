@@ -8,5 +8,6 @@ import { CommsModule }         from '../comms/comms.module';
   imports:     [PrismaModule, CommsModule],
   providers:   [RemindersService],
   controllers: [RemindersController],
+  exports:     [RemindersService],
 })
 export class RemindersModule {}

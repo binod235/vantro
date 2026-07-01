@@ -8,5 +8,6 @@ import { CisSufferedService } from './cis-suffered.service';
 @Module({
   controllers: [SubcontractorsController],
   providers: [SubcontractorsService, SubcontractorPaymentsService, CisEngineService, CisSufferedService],
+  exports: [SubcontractorsService, SubcontractorPaymentsService],
 })
 export class SubcontractorsModule {}
