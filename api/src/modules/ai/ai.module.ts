@@ -8,6 +8,7 @@ import { QuotesModule } from '../quotes/quotes.module';
 import { InvoicesModule } from '../invoices/invoices.module';
 import { SubcontractorsModule } from '../subcontractors/subcontractors.module';
 import { RemindersModule } from '../reminders/reminders.module';
+import { StorageModule } from '../../storage/storage.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { RemindersModule } from '../reminders/reminders.module';
     InvoicesModule,
     SubcontractorsModule,
     RemindersModule,
+    StorageModule,
   ],
   controllers: [AiController],
   providers: [AiService, AiToolsService],

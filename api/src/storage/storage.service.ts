@@ -54,6 +54,19 @@ export class StorageService {
     return `${this.publicUrl}/${key}`;
   }
 
+  async uploadFile(buffer: Buffer, key: string, contentType: string): Promise<string> {
+    this.logger.log(`Uploading file ${key} (${contentType})`);
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+      }),
+    );
+    return `${this.publicUrl}/${key}`;
+  }
+
   async deleteImage(key: string): Promise<void> {
     this.logger.log(`Deleting ${key}`);
 
