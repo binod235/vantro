@@ -27,6 +27,21 @@ class ChatDto {
 
   @IsOptional()
   confirmedAction?: { tool: string; args: Record<string, unknown> };
+
+  @IsOptional()
+  @IsString()
+  currentPage?: string;
+}
+
+class SendEmailDto {
+  @IsString()
+  to!: string;
+
+  @IsString()
+  subject!: string;
+
+  @IsString()
+  body!: string;
 }
 
 class SmartWriteDto {
@@ -80,7 +95,18 @@ export class AiController {
       body.message,
       body.conversationHistory ?? [],
       body.confirmedAction,
+      body.currentPage,
     );
+  }
+
+  @Post('send-email')
+  @Roles('OWNER')
+  async sendEmail(
+    @CurrentUser() user: { companyId: string },
+    @Body() body: SendEmailDto,
+  ) {
+    await this.ai.sendEmail(user.companyId!, body.to, body.subject, body.body);
+    return { success: true };
   }
 
   @Post('smart-write')

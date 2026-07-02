@@ -439,6 +439,34 @@ Do NOT use prepare_form for:
         },
       },
 
+      // ── EMAIL DRAFTING ────────────────────────────────────────────────────────
+      {
+        type: 'function',
+        function: {
+          name: 'draft_email',
+          description: `Draft a professional email for the business owner. Use when the user asks to "write an email", "draft a message", "follow up", "chase", "write to", or similar. Returns a draft the user can review and edit before sending.`,
+          parameters: {
+            type: 'object',
+            properties: {
+              recipient_name: { type: 'string', description: 'Who the email is for' },
+              recipient_email: { type: 'string', description: 'Email address if known' },
+              purpose: {
+                type: 'string',
+                enum: ['payment_chase', 'quote_follow_up', 'appointment_confirmation', 'job_complete', 'thank_you', 'general'],
+                description: 'What the email is about',
+              },
+              context: { type: 'string', description: 'Any specific details to include' },
+              tone: {
+                type: 'string',
+                enum: ['friendly', 'firm', 'formal'],
+                description: 'Tone of the email',
+              },
+            },
+            required: ['recipient_name', 'purpose'],
+          },
+        },
+      },
+
       // ── REMINDERS ─────────────────────────────────────────────────────────────
       {
         type: 'function',
@@ -621,6 +649,7 @@ Do NOT use prepare_form for:
       case 'get_profit_and_loss':          return this.executeGetProfitAndLoss(companyId, a);
       case 'generate_business_report':     return this.executeGenerateBusinessReport(companyId, a);
       case 'prepare_form':                 return this.executePrepareForm(companyId, a);
+      case 'draft_email':                  return this.executeDraftEmail(companyId, a);
 
       // Reminder tools
       case 'create_reminder':              return this.executeCreateReminder(companyId, _userId, a);
@@ -664,6 +693,29 @@ Do NOT use prepare_form for:
     const job = await this.jobs.create(dto, companyId);
     const others = customers.length > 1 ? ` (${customers.length - 1} other match${customers.length > 2 ? 'es' : ''} found)` : '';
 
+    // Cross-reference: overdue invoices + last engineer for this customer
+    const [overdueCount, lastJob] = await Promise.all([
+      this.prisma.client.invoice.count({
+        where: {
+          company_id: companyId,
+          customer_id: customer.id,
+          status: { in: ['SENT', 'PART_PAID', 'OVERDUE'] },
+          due_date: { lt: new Date() },
+        },
+      }),
+      this.prisma.client.job.findFirst({
+        where: {
+          company_id: companyId,
+          customer_id: customer.id,
+          status: 'COMPLETED',
+          engineer_id: { not: null },
+          id: { not: job.id },
+        },
+        orderBy: { updated_at: 'desc' },
+        include: { engineer: { select: { name: true } } },
+      }),
+    ]);
+
     return {
       success: true,
       job_id: job.id,
@@ -671,6 +723,11 @@ Do NOT use prepare_form for:
       customer: customer.name,
       scheduled_at: job.scheduled_at,
       others,
+      cross_reference: {
+        overdue_invoices: overdueCount > 0 ? overdueCount : null,
+        last_engineer: lastJob?.engineer?.name ?? null,
+        last_job_type: lastJob?.title ?? null,
+      },
     };
   }
 
@@ -2310,6 +2367,108 @@ Do NOT use prepare_form for:
       message: `Done! Marked "${todos[0].title}" as completed.`,
       reminder_id: todos[0].id,
       title: todos[0].title,
+    };
+  }
+
+  // ── Email drafting ────────────────────────────────────────────────────────────
+
+  private async executeDraftEmail(
+    companyId: string,
+    args: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const recipientName = args.recipient_name as string;
+    const purpose = (args.purpose as string) ?? 'general';
+    const tone = (args.tone as string | undefined) ?? 'friendly';
+
+    const [company, customerResult] = await Promise.all([
+      this.prisma.client.company.findUnique({
+        where: { id: companyId },
+        select: { name: true, phone: true, website: true },
+      }),
+      this.prisma.client.customer.findMany({
+        where: { company_id: companyId, name: { contains: recipientName, mode: 'insensitive' } },
+        take: 1,
+        include: {
+          invoices: {
+            where: { status: { in: ['SENT', 'PART_PAID', 'OVERDUE'] }, due_date: { lt: new Date() } },
+            orderBy: { due_date: 'asc' },
+            take: 3,
+            select: { invoice_number: true, amount_due_pence: true, due_date: true },
+          },
+        },
+      }),
+    ]);
+
+    const customer = customerResult[0] ?? null;
+
+    let emailContext = `You are writing on behalf of ${company?.name ?? 'a UK plumbing and heating business'}.`;
+    emailContext += ` The email recipient is ${customer?.name ?? recipientName}.`;
+    emailContext += ` Tone: ${tone}.`;
+
+    if (purpose === 'payment_chase' && customer?.invoices?.length) {
+      const overdueTotal = customer.invoices.reduce((s, i) => s + i.amount_due_pence, 0);
+      const oldest = customer.invoices[0];
+      emailContext += ` ${customer.name} has ${customer.invoices.length} overdue invoice(s) totalling £${(overdueTotal / 100).toFixed(2)}.`;
+      if (oldest?.due_date) {
+        const daysAgo = Math.floor((Date.now() - oldest.due_date.getTime()) / (1000 * 60 * 60 * 24));
+        emailContext += ` The oldest is ${oldest.invoice_number}, overdue by ${daysAgo} days.`;
+      }
+    }
+
+    if (args.context) emailContext += ` Additional context: ${args.context as string}`;
+
+    const signature = [company?.name, company?.phone, company?.website]
+      .filter(Boolean)
+      .join('\n');
+
+    const res = await fetch(`${process.env.AI_API_URL ?? 'https://api.fireworks.ai/inference/v1'}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.AI_API_KEY ?? ''}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: process.env.AI_MODEL ?? 'accounts/fireworks/models/deepseek-v4-flash',
+        messages: [{
+          role: 'user',
+          content: `${emailContext}
+
+Write a short, professional email body. Rules:
+- British English
+- Under 150 words
+- Clear call to action
+- Do NOT include Subject line or email headers
+- End with sign-off and company details below
+
+Company signature:
+${signature}`,
+        }],
+        max_tokens: 512,
+        temperature: 0.6,
+      }),
+    });
+
+    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
+    const draft = data.choices?.[0]?.message?.content?.trim() ?? '';
+
+    const subjects: Record<string, string> = {
+      payment_chase: `Payment reminder — ${company?.name ?? ''}`,
+      quote_follow_up: `Your quote — ${company?.name ?? ''}`,
+      appointment_confirmation: `Appointment confirmation — ${company?.name ?? ''}`,
+      job_complete: `Job completed — ${company?.name ?? ''}`,
+      thank_you: `Thank you — ${company?.name ?? ''}`,
+      general: `Message from ${company?.name ?? ''}`,
+    };
+
+    return {
+      action: 'show_draft',
+      draft: {
+        to: customer?.email ?? (args.recipient_email as string | undefined) ?? '',
+        to_name: customer?.name ?? recipientName,
+        subject: subjects[purpose] ?? subjects['general'],
+        body: draft,
+      },
+      message: `Here's a draft email for ${customer?.name ?? recipientName}. Review and edit before sending.`,
     };
   }
 }
