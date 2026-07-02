@@ -3,6 +3,7 @@ import { IsArray, IsIn, IsOptional, IsString, ValidateNested } from 'class-valid
 import { Type } from 'class-transformer';
 import { AiService } from './ai.service';
 import { PipInsightsService } from './pip-insights.service';
+import { PipMemoryService } from './pip-memory.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 
@@ -40,11 +41,31 @@ class SmartWriteDto {
   action!: string;
 }
 
+class SessionMessageDto {
+  @IsString()
+  role!: string;
+
+  @IsString()
+  content!: string;
+
+  @IsOptional()
+  @IsString()
+  timestamp?: string;
+}
+
+class SaveSessionDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SessionMessageDto)
+  messages!: SessionMessageDto[];
+}
+
 @Controller('ai')
 export class AiController {
   constructor(
     private readonly ai: AiService,
     private readonly pipInsights: PipInsightsService,
+    private readonly memory: PipMemoryService,
   ) {}
 
   @Post('chat')
@@ -93,5 +114,22 @@ export class AiController {
     @Param('id') id: string,
   ) {
     return this.pipInsights.dismiss(user.companyId!, id);
+  }
+
+  @Post('save-session')
+  @Roles('OWNER')
+  async saveSession(
+    @CurrentUser() user: { companyId: string; id: string },
+    @Body() body: SaveSessionDto,
+  ) {
+    await this.memory.saveSession(user.companyId!, user.id, body.messages);
+    return { success: true };
+  }
+
+  @Get('last-session')
+  @Roles('OWNER')
+  async getLastSession(@CurrentUser() user: { companyId: string; id: string }) {
+    const messages = await this.memory.getLastSession(user.companyId!, user.id);
+    return { messages };
   }
 }

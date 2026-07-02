@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiToolsService } from './ai-tools.service';
+import { PipMemoryService } from './pip-memory.service';
 
 const AI_API_URL = process.env.AI_API_URL ?? 'https://api.fireworks.ai/inference/v1';
 const AI_API_KEY = process.env.AI_API_KEY ?? '';
@@ -29,7 +30,10 @@ interface ModelResponse {
 export class AiService {
   private readonly logger = new Logger(AiService.name);
 
-  constructor(private readonly tools: AiToolsService) {}
+  constructor(
+    private readonly tools: AiToolsService,
+    private readonly memory: PipMemoryService,
+  ) {}
 
   async chat(
     companyId: string,
@@ -41,6 +45,12 @@ export class AiService {
     const today = new Date().toLocaleDateString('en-GB', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     });
+
+    // Load recent conversation summaries for context injection
+    const recentContext = await this.memory.getRecentContext(companyId, userId);
+    const contextBlock = recentContext
+      ? `\n\nRecent conversations with this owner:\n${recentContext}\n\nUse this context naturally — if the owner references something from a previous conversation, you can recall it. Don't say "from our previous conversation" — just know the context like a colleague who remembers.`
+      : '';
 
     const systemPrompt = `You are Pip, a helpful AI assistant for Vantro — a job management app for UK plumbing and heating firms.
 
@@ -72,7 +82,7 @@ Rules:
 - Never expose internal IDs to the user — refer to records by name or number
 - When the user asks to CREATE something with complex data (quotes with line items, jobs with many fields, gas certificates with technical details, new subcontractors), use the prepare_form tool to open the form pre-filled rather than asking them to type everything in chat
 - For SIMPLE creates (just a name and a basic title), use create_job or create_customer directly
-- Guideline: if you would need to ask the user for more than 3 fields of information, use prepare_form instead`;
+- Guideline: if you would need to ask the user for more than 3 fields of information, use prepare_form instead${contextBlock}`;
 
     const systemMessage: AiMessage = { role: 'system', content: systemPrompt };
     const historyMessages: AiMessage[] = history.slice(-20).map(m => ({

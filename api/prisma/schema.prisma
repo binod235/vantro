@@ -365,12 +365,13 @@ model Company {
   purchaseOrders   PurchaseOrder[]
   jobStages        JobStage[]
   jobTemplates      JobTemplate[]
-  communicationLogs CommunicationLog[]
-  jobServiceReports JobServiceReport[]
-  jsr_next_number   Int    @default(1)
-  jsr_prefix        String @default("JSR")
-  jsr_default_terms String?
-  pipInsights       PipInsight[]
+  communicationLogs    CommunicationLog[]
+  jobServiceReports    JobServiceReport[]
+  jsr_next_number      Int    @default(1)
+  jsr_prefix           String @default("JSR")
+  jsr_default_terms    String?
+  pipInsights          PipInsight[]
+  pipConversations     PipConversation[]
 }
 
 model Customer {
@@ -1298,4 +1299,19 @@ model PipInsight {
 
   @@index([company_id, is_read, created_at])
   @@index([company_id, expires_at])
+}
+
+model PipConversation {
+  id            String    @id @default(cuid())
+  company_id    String
+  company       Company   @relation(fields: [company_id], references: [id])
+  user_id       String
+  messages      Json
+  summary       String?
+  message_count Int       @default(0)
+  started_at    DateTime  @default(now())
+  ended_at      DateTime?
+  created_at    DateTime  @default(now())
+
+  @@index([company_id, user_id, created_at])
 }
