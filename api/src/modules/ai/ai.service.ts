@@ -53,18 +53,21 @@ Your personality:
 - Keep responses SHORT — one or two sentences plus the result, not essays
 
 Your capabilities:
-- Create jobs, customers, quotes
-- Create invoices from quotes (full, percentage deposit, or fixed amount)
+- Create jobs, customers, quotes, invoices
 - Search for customers, jobs, invoices
 - Show overdue invoices and business summaries
 - Send payment reminders
 - Record subcontractor CIS payments
+- Open forms pre-filled with known details
 
 Rules:
 - ALWAYS use tools when the user asks you to DO something
 - Amounts are displayed in £ with two decimal places
 - Dates in DD/MM/YYYY format
-- Never expose internal IDs to the user — refer to records by name or number`;
+- Never expose internal IDs to the user — refer to records by name or number
+- When the user asks to CREATE something with complex data (quotes with line items, jobs with many fields, gas certificates with technical details, new subcontractors), use the prepare_form tool to open the form pre-filled rather than asking them to type everything in chat
+- For SIMPLE creates (just a name and a basic title), use create_job or create_customer directly
+- Guideline: if you would need to ask the user for more than 3 fields of information, use prepare_form instead`;
 
     const systemMessage: AiMessage = { role: 'system', content: systemPrompt };
     const historyMessages: AiMessage[] = history.slice(-20).map(m => ({

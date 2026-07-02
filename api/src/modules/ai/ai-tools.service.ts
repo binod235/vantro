@@ -398,6 +398,46 @@ export class AiToolsService {
           },
         },
       },
+      {
+        type: 'function',
+        function: {
+          name: 'prepare_form',
+          description: `Prepares and pre-fills a form for the user to complete. Use this instead of create_job/create_quote/create_customer when the user's request involves complex structured data like line items, kits, multiple fields, or price lists. The user will complete the details in the proper form UI rather than typing everything in chat.
+
+Use prepare_form for:
+- Creating quotes (need line items, prices, VAT)
+- Creating invoices manually (need line items)
+- Creating jobs (many optional fields)
+- Creating customers (address, contact details)
+- Recording subcontractor payments (amount breakdowns)
+- Creating gas certificates (technical fields)
+- Creating credit notes (line items)
+- Adding new subcontractors (UTR, CIS status, company type)
+
+Do NOT use prepare_form for:
+- Simple searches (use search tools)
+- Read-only queries (use get_ tools)
+- Actions like send_invoice, send_reminders (use those directly)
+- Creating invoice from quote (use create_invoice_from_quote directly)`,
+          parameters: {
+            type: 'object',
+            properties: {
+              form_type: {
+                type: 'string',
+                enum: ['job', 'customer', 'quote', 'invoice', 'gas_certificate', 'subcontractor_payment', 'credit_note', 'subcontractor'],
+                description: 'Which form to open',
+              },
+              customer_name: { type: 'string', description: 'Customer name to search and pre-fill' },
+              subcontractor_name: { type: 'string', description: 'Subcontractor name to search and pre-fill' },
+              title: { type: 'string', description: 'Job/quote title to pre-fill' },
+              description: { type: 'string', description: 'Description to pre-fill' },
+              scheduled_date: { type: 'string', description: 'Date to pre-fill (YYYY-MM-DD)' },
+              scheduled_time: { type: 'string', description: 'Time to pre-fill (HH:MM)' },
+            },
+            required: ['form_type'],
+          },
+        },
+      },
     ];
   }
 
@@ -510,6 +550,7 @@ export class AiToolsService {
       case 'get_weekly_digest':            return this.executeGetWeeklyDigest(companyId);
       case 'get_profit_and_loss':          return this.executeGetProfitAndLoss(companyId, a);
       case 'generate_business_report':     return this.executeGenerateBusinessReport(companyId, a);
+      case 'prepare_form':                 return this.executePrepareForm(companyId, a);
 
       default:
         return { error: true, message: `Unknown tool: ${toolName}` };
@@ -1884,6 +1925,52 @@ export class AiToolsService {
       generated_at: now.toLocaleDateString('en-GB'),
       message: `Your ${label} business report is ready.`,
     };
+  }
+
+  // ── Prepare form ────────────────────────────────────────────────────────────
+
+  private async executePrepareForm(companyId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const formType = args.form_type as string;
+    const prefill: Record<string, unknown> = {};
+    let note: string | undefined;
+
+    if (args.customer_name) {
+      const customers = await this.prisma.client.customer.findMany({
+        where: {
+          company_id: companyId,
+          name: { contains: args.customer_name as string, mode: 'insensitive' },
+        },
+        take: 1,
+      });
+      if (customers.length > 0) {
+        prefill.customer_id = customers[0].id;
+        prefill.customer_name = customers[0].name;
+      } else {
+        prefill.customer_name_search = args.customer_name;
+        note = `No customer found matching "${args.customer_name as string}" — you can search or create one in the form.`;
+      }
+    }
+
+    if (args.subcontractor_name) {
+      const subs = await this.prisma.client.subcontractor.findMany({
+        where: {
+          company_id: companyId,
+          name: { contains: args.subcontractor_name as string, mode: 'insensitive' },
+        },
+        take: 1,
+      });
+      if (subs.length > 0) {
+        prefill.subcontractor_id = subs[0].id;
+        prefill.subcontractor_name = subs[0].name;
+      }
+    }
+
+    if (args.title) prefill.title = args.title;
+    if (args.description) prefill.description = args.description;
+    if (args.scheduled_date) prefill.scheduled_date = args.scheduled_date;
+    if (args.scheduled_time) prefill.scheduled_time = args.scheduled_time;
+
+    return { action: 'open_form', form: formType, prefill, note };
   }
 
   // ── Period helpers ──────────────────────────────────────────────────────────
