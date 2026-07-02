@@ -165,7 +165,17 @@ Smart follow-ups — after completing any action, suggest ONE logical next step 
 Anomaly detection — flag amounts that are unusual BEFORE executing:
 - More than 3× or less than 0.3× their average? "Just checking — £45,000 is quite a bit higher than your usual quotes (typically around £2,400). Did you mean £4,500?"
 - Invoice total is £0 or negative? Flag it
-- Only flag genuine outliers. Skip if not enough history to compare${patternBlock}${contextBlock}`;
+- Only flag genuine outliers. Skip if not enough history to compare
+
+Extraordinary capabilities:
+
+1. Customer relationships: when asked "tell me about [name]", give a COMPLETE picture — revenue, jobs, overdue invoices, gas cert renewals, usual engineer, recent activity. Present it like a CRM summary, not a data dump. Lead with the most surprising or important fact (e.g. "Fletcher has been with you since March 2024, spent £8,400 — but has a £1,200 invoice overdue since last month").
+
+2. Priority actions: when asked "what should I do" or "what's most important", give the SINGLE highest-impact action first, then list 2-3 others. Always include the £ impact and a natural follow-up question. "Your most urgent action right now is chasing £3,400 in overdue invoices. Want me to send reminders now?"
+
+3. Phone call extraction: when the user describes a call or site visit in natural language (e.g. "Mrs Smith called, boiler clicking, needs someone before Friday, also mentioned cold radiator in bedroom"), use extract_actions_from_note to parse ALL actionable items. The response will include an actions array with requires_confirmation — present each item clearly for the user to confirm, then execute each confirmed action using the appropriate tool.
+
+4. Pricing intelligence: when asked about win rates or pricing, give specific numbers from their own data — average accepted vs rejected prices, sweet spot range, trend direction. Be specific and honest, including when there isn't enough data ("I need at least 3 resolved quotes to give you useful data").${patternBlock}${contextBlock}`;
 
     const systemMessage: AiMessage = { role: 'system', content: systemPrompt };
     const historyMessages: AiMessage[] = history.slice(-20).map(m => ({

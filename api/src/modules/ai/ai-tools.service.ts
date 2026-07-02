@@ -467,6 +467,57 @@ Do NOT use prepare_form for:
         },
       },
 
+      // ── EXTRAORDINARY FEATURES ────────────────────────────────────────────────
+      {
+        type: 'function',
+        function: {
+          name: 'get_customer_profile',
+          description: `Get a comprehensive profile of a customer — their full history with your business. Use when the user says "tell me about [name]", "what's the story with [name]", "customer summary for [name]", "everything on [name]", or just mentions a customer name in a way that implies they want context.`,
+          parameters: {
+            type: 'object',
+            properties: {
+              customer_name: { type: 'string', description: 'Customer name to look up' },
+            },
+            required: ['customer_name'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'get_priority_action',
+          description: `Analyse the business right now and recommend the single most impactful thing the owner should do. Use when the user asks "what should I focus on", "what's most important", "what should I do", "priorities", "what needs attention".`,
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'extract_actions_from_note',
+          description: `Extract and execute multiple actions from a free-form note or phone call summary. Use when the user describes what happened in a call, meeting, or visit in natural language and expects you to figure out what needs doing. Extract: jobs to create, quotes to send, reminders to set, notes to add, follow-ups to schedule.`,
+          parameters: {
+            type: 'object',
+            properties: {
+              note: { type: 'string', description: 'The free-form text describing what happened' },
+            },
+            required: ['note'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'get_win_rate_analysis',
+          description: `Analyse quote win rates and pricing patterns. Use when the user asks about pricing, win rates, "am I pricing right", "why are quotes being rejected", "how much should I charge for X".`,
+          parameters: {
+            type: 'object',
+            properties: {
+              job_type: { type: 'string', description: 'Specific job type to analyse (e.g. "boiler install"). Leave empty for overall analysis.' },
+            },
+          },
+        },
+      },
+
       // ── REMINDERS ─────────────────────────────────────────────────────────────
       {
         type: 'function',
@@ -650,6 +701,12 @@ Do NOT use prepare_form for:
       case 'generate_business_report':     return this.executeGenerateBusinessReport(companyId, a);
       case 'prepare_form':                 return this.executePrepareForm(companyId, a);
       case 'draft_email':                  return this.executeDraftEmail(companyId, a);
+
+      // Extraordinary tools
+      case 'get_customer_profile':         return this.executeGetCustomerProfile(companyId, a);
+      case 'get_priority_action':          return this.executeGetPriorityAction(companyId);
+      case 'extract_actions_from_note':    return this.executeExtractActionsFromNote(companyId, a);
+      case 'get_win_rate_analysis':        return this.executeGetWinRateAnalysis(companyId, a);
 
       // Reminder tools
       case 'create_reminder':              return this.executeCreateReminder(companyId, _userId, a);
@@ -2367,6 +2424,498 @@ Do NOT use prepare_form for:
       message: `Done! Marked "${todos[0].title}" as completed.`,
       reminder_id: todos[0].id,
       title: todos[0].title,
+    };
+  }
+
+  // ── Extraordinary features ───────────────────────────────────────────────────
+
+  private async executeGetCustomerProfile(companyId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const customer = await this.prisma.client.customer.findFirst({
+      where: {
+        company_id: companyId,
+        name: { contains: args.customer_name as string, mode: 'insensitive' },
+      },
+    });
+    if (!customer) {
+      return { error: true, message: `No customer found matching "${args.customer_name as string}"` };
+    }
+
+    const now = new Date();
+
+    const [jobs, invoices, quotes, gasCerts] = await Promise.all([
+      this.prisma.client.job.findMany({
+        where: { company_id: companyId, customer_id: customer.id },
+        orderBy: { created_at: 'desc' },
+        include: { engineer: { select: { name: true } } },
+      }),
+      this.prisma.client.invoice.findMany({
+        where: { company_id: companyId, customer_id: customer.id },
+        orderBy: { created_at: 'desc' },
+      }),
+      this.prisma.client.quote.findMany({
+        where: { company_id: companyId, customer_id: customer.id },
+        orderBy: { created_at: 'desc' },
+      }),
+      this.prisma.client.gasSafetyCertificate.findMany({
+        where: { company_id: companyId, customer_id: customer.id },
+        orderBy: { created_at: 'desc' },
+        take: 5,
+      }),
+    ]);
+
+    const completedJobs = jobs.filter(j => j.status === 'COMPLETED');
+    const activeJobs = jobs.filter(j => ['SCHEDULED', 'IN_PROGRESS'].includes(j.status));
+
+    const paidInvoices = invoices.filter(i => i.status === 'PAID');
+    const overdueInvoices = invoices.filter(i =>
+      ['SENT', 'PART_PAID'].includes(i.status) && i.due_date !== null && i.due_date < now,
+    );
+    const outstandingInvoices = invoices.filter(i => ['SENT', 'PART_PAID'].includes(i.status));
+
+    const lifetimeRevenue = paidInvoices.reduce((sum, i) => sum + i.total_pence, 0);
+    const outstandingTotal = outstandingInvoices.reduce((sum, i) => sum + i.amount_due_pence, 0);
+    const overdueTotal = overdueInvoices.reduce((sum, i) => sum + i.amount_due_pence, 0);
+
+    const acceptedQuotes = quotes.filter(q => q.status === 'ACCEPTED');
+    const pendingQuotes = quotes.filter(q => q.status === 'SENT');
+
+    // CP12 renewal prediction
+    const lastCP12 = gasCerts.find(g => g.cert_type === 'CP12');
+    let cp12DueInfo: string | null = null;
+    if (lastCP12) {
+      const renewalDate = new Date(lastCP12.created_at);
+      renewalDate.setFullYear(renewalDate.getFullYear() + 1);
+      const daysUntilRenewal = Math.ceil((renewalDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysUntilRenewal <= 60) {
+        cp12DueInfo = daysUntilRenewal > 0
+          ? `Gas safety cert renewal due in ${daysUntilRenewal} days`
+          : `Gas safety cert OVERDUE by ${Math.abs(daysUntilRenewal)} days`;
+      }
+    }
+
+    // Most common engineer
+    const engineerCounts: Record<string, { name: string; count: number }> = {};
+    for (const j of jobs) {
+      if (j.engineer_id && j.engineer) {
+        const id = j.engineer_id;
+        if (!engineerCounts[id]) engineerCounts[id] = { name: j.engineer.name, count: 0 };
+        engineerCounts[id].count++;
+      }
+    }
+    const topEngineer = Object.values(engineerCounts).sort((a, b) => b.count - a.count)[0] ?? null;
+
+    // Customer since
+    const firstInteraction = [...jobs, ...quotes, ...invoices]
+      .map(r => r.created_at)
+      .sort((a, b) => a.getTime() - b.getTime())[0];
+    const customerSince = firstInteraction
+      ? firstInteraction.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+      : 'recently';
+
+    const avgJobValue = paidInvoices.length > 0
+      ? Math.round(lifetimeRevenue / paidInvoices.length)
+      : 0;
+
+    const recentActivity = [
+      ...jobs.slice(0, 5).map(j => ({ date: j.created_at, description: `${j.title} — ${j.status.toLowerCase()}` })),
+      ...invoices.slice(0, 3).map(i => ({ date: i.created_at, description: `Invoice ${i.invoice_number} — £${(i.total_pence / 100).toFixed(2)} — ${i.status.toLowerCase()}` })),
+    ].sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 6);
+
+    return {
+      customer: {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        address: [customer.address_line1, customer.city, customer.postcode].filter(Boolean).join(', '),
+        customer_since: customerSince,
+      },
+      financials: {
+        lifetime_revenue_pounds: (lifetimeRevenue / 100).toFixed(2),
+        outstanding_pounds: (outstandingTotal / 100).toFixed(2),
+        overdue_pounds: (overdueTotal / 100).toFixed(2),
+        overdue_count: overdueInvoices.length,
+        oldest_overdue_days: overdueInvoices.length > 0
+          ? Math.floor((now.getTime() - overdueInvoices[0].due_date!.getTime()) / (1000 * 60 * 60 * 24))
+          : 0,
+        avg_job_value_pounds: (avgJobValue / 100).toFixed(2),
+        total_invoices: invoices.length,
+        total_paid: paidInvoices.length,
+      },
+      jobs: {
+        total: jobs.length,
+        completed: completedJobs.length,
+        active: activeJobs.length,
+        active_details: activeJobs.map(j => ({
+          title: j.title,
+          status: j.status,
+          scheduled_date: j.scheduled_at?.toISOString().split('T')[0] ?? null,
+        })),
+      },
+      quotes: {
+        total: quotes.length,
+        accepted: acceptedQuotes.length,
+        pending: pendingQuotes.length,
+        pending_details: pendingQuotes.map(q => ({
+          number: q.quote_number,
+          total_pounds: (q.total_pence / 100).toFixed(2),
+          sent_date: q.updated_at.toISOString().split('T')[0],
+        })),
+      },
+      gas_certificates: {
+        total: gasCerts.length,
+        renewal_warning: cp12DueInfo,
+      },
+      relationship: {
+        usual_engineer: topEngineer
+          ? `${topEngineer.name} (${topEngineer.count} of ${jobs.length} jobs)`
+          : null,
+      },
+      recent_activity: recentActivity.map(a => ({
+        date: a.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+        description: a.description,
+      })),
+    };
+  }
+
+  private async executeGetPriorityAction(companyId: string): Promise<ToolResult> {
+    const now = new Date();
+    const priorities: Array<{
+      priority: number;
+      category: string;
+      title: string;
+      detail: string;
+      impact_pounds: number;
+      action_label: string;
+      action_command: string;
+    }> = [];
+
+    // 1. Overdue invoices
+    const overdueInvoices = await this.prisma.client.invoice.findMany({
+      where: {
+        company_id: companyId,
+        status: { in: ['SENT', 'PART_PAID'] },
+        due_date: { lt: now },
+      },
+      include: { customer: { select: { name: true } } },
+      orderBy: { due_date: 'asc' },
+    });
+
+    if (overdueInvoices.length > 0) {
+      const total = overdueInvoices.reduce((s, i) => s + i.amount_due_pence, 0);
+      const oldest = overdueInvoices[0];
+      const days = Math.floor((now.getTime() - oldest.due_date!.getTime()) / (1000 * 60 * 60 * 24));
+      priorities.push({
+        priority: days > 30 ? 100 : 80,
+        category: '💰 Revenue at risk',
+        title: `Chase ${overdueInvoices.length} overdue invoice${overdueInvoices.length > 1 ? 's' : ''}`,
+        detail: `£${(total / 100).toFixed(2)} outstanding. Worst: ${oldest.customer?.name ?? 'Unknown'} (${days} days).`,
+        impact_pounds: total / 100,
+        action_label: 'Send reminders now',
+        action_command: 'Send payment reminders for all overdue invoices',
+      });
+    }
+
+    // 2. Unbilled completed jobs
+    const completedJobs = await this.prisma.client.job.findMany({
+      where: { company_id: companyId, status: 'COMPLETED' },
+      include: {
+        invoices: { where: { status: { not: 'CANCELLED' } }, select: { id: true } },
+        quotes: { select: { total_pence: true }, orderBy: { created_at: 'desc' }, take: 1 },
+      },
+    });
+    const unbilled = completedJobs.filter(j => j.invoices.length === 0);
+
+    if (unbilled.length > 0) {
+      const estimated = unbilled.reduce((s, j) => s + (j.quotes[0]?.total_pence ?? 0), 0);
+      priorities.push({
+        priority: 70,
+        category: '📋 Unbilled work',
+        title: `Invoice ${unbilled.length} completed job${unbilled.length > 1 ? 's' : ''}`,
+        detail: estimated > 0
+          ? `~£${(estimated / 100).toFixed(2)} of work done but not billed.`
+          : `${unbilled.length} jobs finished but no invoice created.`,
+        impact_pounds: estimated / 100,
+        action_label: 'Show unbilled jobs',
+        action_command: 'Show me unbilled completed jobs',
+      });
+    }
+
+    // 3. CIS deadline approaching (days 12–19)
+    const dayOfMonth = now.getDate();
+    if (dayOfMonth >= 12 && dayOfMonth <= 19) {
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const [subPayments, returnStatus] = await Promise.all([
+        this.prisma.client.subcontractorPayment.count({
+          where: { company_id: companyId, tax_month: currentMonth },
+        }),
+        this.prisma.client.cisMonthlyReturn.findUnique({
+          where: { company_id_tax_month: { company_id: companyId, tax_month: currentMonth } },
+        }),
+      ]);
+      if (subPayments > 0 && !returnStatus) {
+        const daysLeft = 19 - dayOfMonth;
+        priorities.push({
+          priority: dayOfMonth >= 17 ? 95 : 60,
+          category: '⏰ Compliance deadline',
+          title: `CIS300 due ${daysLeft === 0 ? 'TODAY' : `in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`}`,
+          detail: 'Monthly CIS return not yet submitted.',
+          impact_pounds: 0,
+          action_label: 'Go to CIS Returns',
+          action_command: 'Show me my CIS position',
+        });
+      }
+    }
+
+    // 4. Stale quotes
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const staleQuotes = await this.prisma.client.quote.findMany({
+      where: {
+        company_id: companyId,
+        status: 'SENT',
+        updated_at: { lt: sevenDaysAgo },
+      },
+      include: { customer: { select: { name: true } } },
+    });
+
+    if (staleQuotes.length > 0) {
+      const totalValue = staleQuotes.reduce((s, q) => s + q.total_pence, 0);
+      priorities.push({
+        priority: 50,
+        category: '📝 Pipeline',
+        title: `Follow up on ${staleQuotes.length} unanswered quote${staleQuotes.length > 1 ? 's' : ''}`,
+        detail: `£${(totalValue / 100).toFixed(2)} in quotes waiting for response.`,
+        impact_pounds: totalValue / 100,
+        action_label: 'View stale quotes',
+        action_command: 'Show me my quote pipeline',
+      });
+    }
+
+    // 5. Overdue todos
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const overdueTodos = await this.prisma.client.todo.count({
+      where: {
+        company_id: companyId,
+        status: 'OPEN',
+        due_date: { lt: todayStart },
+      },
+    });
+
+    if (overdueTodos > 0) {
+      priorities.push({
+        priority: 40,
+        category: '📌 Follow-ups',
+        title: `${overdueTodos} overdue reminder${overdueTodos > 1 ? 's' : ''}`,
+        detail: 'Things you asked to be reminded about that are past due.',
+        impact_pounds: 0,
+        action_label: 'Show reminders',
+        action_command: 'List my overdue reminders',
+      });
+    }
+
+    priorities.sort((a, b) => b.priority - a.priority);
+
+    return {
+      top_priority: priorities[0] ?? null,
+      all_priorities: priorities.slice(0, 5),
+      total_actionable: priorities.length,
+      total_revenue_at_stake_pounds: priorities.reduce((s, p) => s + p.impact_pounds, 0).toFixed(2),
+    };
+  }
+
+  private async executeExtractActionsFromNote(companyId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const note = args.note as string;
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const res = await fetch(`${process.env.AI_API_URL ?? 'https://api.fireworks.ai/inference/v1'}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.AI_API_KEY ?? ''}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: process.env.AI_MODEL ?? 'accounts/fireworks/models/deepseek-v4-flash',
+        messages: [{
+          role: 'user',
+          content: `You are an assistant for a UK plumbing business. Extract actionable items from this note/call summary. Return ONLY valid JSON, no markdown, no explanation.
+
+Note: "${note}"
+
+Extract into this JSON structure:
+{
+  "actions": [
+    {
+      "type": "create_job" | "create_reminder" | "create_quote" | "add_note",
+      "customer_name": "string or null",
+      "title": "string",
+      "description": "string",
+      "date": "YYYY-MM-DD or null",
+      "time": "HH:MM or null",
+      "priority": "LOW" | "MEDIUM" | "HIGH" | "URGENT",
+      "amount_pounds": number or null
+    }
+  ],
+  "summary": "one sentence summary of what was discussed"
+}
+
+Rules:
+- If someone needs a visit/appointment, that is a create_job
+- If something needs following up later, that is a create_reminder
+- If pricing was discussed, that could be a create_quote
+- If it is just information, that is an add_note
+- Resolve relative dates using today: ${todayStr}
+- "ASAP" or "urgent" = priority URGENT, date = tomorrow
+- "next week" = next Monday
+- Return at least one action`,
+        }],
+        max_tokens: 1024,
+        temperature: 0.2,
+      }),
+    });
+
+    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
+    const content = data.choices?.[0]?.message?.content?.trim() ?? '{}';
+
+    let parsed: { actions?: Array<Record<string, unknown>>; summary?: string };
+    try {
+      const clean = content.replace(/```json\n?|```\n?/g, '').trim();
+      parsed = JSON.parse(clean) as typeof parsed;
+    } catch {
+      return { error: true, message: 'I had trouble parsing that note. Could you try again with more detail?' };
+    }
+
+    // Enrich with customer lookups
+    if (parsed.actions && Array.isArray(parsed.actions)) {
+      for (const action of parsed.actions) {
+        if (action.customer_name) {
+          const customer = await this.prisma.client.customer.findFirst({
+            where: {
+              company_id: companyId,
+              name: { contains: action.customer_name as string, mode: 'insensitive' },
+            },
+            select: { id: true, name: true },
+          });
+          action.customer_found = !!customer;
+          action.customer_id = customer?.id ?? null;
+          action.customer_resolved_name = customer?.name ?? action.customer_name;
+        }
+      }
+    }
+
+    const actionCount = parsed.actions?.length ?? 0;
+    return {
+      actions: parsed.actions ?? [],
+      summary: parsed.summary ?? '',
+      action_count: actionCount,
+      requires_confirmation: true,
+      message: `I found ${actionCount} action${actionCount !== 1 ? 's' : ''} from your note. Review and confirm:`,
+    };
+  }
+
+  private async executeGetWinRateAnalysis(companyId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+
+    const quotes = await this.prisma.client.quote.findMany({
+      where: {
+        company_id: companyId,
+        created_at: { gte: twelveMonthsAgo },
+        status: { in: ['ACCEPTED', 'REJECTED', 'EXPIRED'] },
+        ...(args.job_type ? {
+          reference: { contains: args.job_type as string, mode: 'insensitive' as const },
+        } : {}),
+      },
+      select: {
+        id: true,
+        reference: true,
+        total_pence: true,
+        status: true,
+        created_at: true,
+        customer: { select: { name: true } },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    if (quotes.length < 3) {
+      return {
+        message: `Not enough quote history to analyse${args.job_type ? ` for "${args.job_type as string}"` : ''}. Need at least 3 resolved quotes (you have ${quotes.length}).`,
+        insufficient_data: true,
+      };
+    }
+
+    const accepted = quotes.filter(q => q.status === 'ACCEPTED');
+    const rejected = quotes.filter(q => q.status === 'REJECTED');
+    const expired = quotes.filter(q => q.status === 'EXPIRED');
+
+    const winRate = (accepted.length / quotes.length) * 100;
+    const acceptedAvg = accepted.length > 0
+      ? accepted.reduce((s, q) => s + q.total_pence, 0) / accepted.length : 0;
+    const rejectedAvg = rejected.length > 0
+      ? rejected.reduce((s, q) => s + q.total_pence, 0) / rejected.length : 0;
+
+    // Quartile price range analysis
+    const allPrices = quotes
+      .map(q => ({ price: q.total_pence, accepted: q.status === 'ACCEPTED' }))
+      .sort((a, b) => a.price - b.price);
+
+    const quarter = Math.max(1, Math.floor(allPrices.length / 4));
+    const priceRanges = [
+      { label: 'Budget',   quotes: allPrices.slice(0, quarter) },
+      { label: 'Low-mid',  quotes: allPrices.slice(quarter, quarter * 2) },
+      { label: 'High-mid', quotes: allPrices.slice(quarter * 2, quarter * 3) },
+      { label: 'Premium',  quotes: allPrices.slice(quarter * 3) },
+    ].filter(r => r.quotes.length > 0).map(r => ({
+      label: r.label,
+      range_pounds: `£${(r.quotes[0].price / 100).toFixed(0)} – £${(r.quotes[r.quotes.length - 1].price / 100).toFixed(0)}`,
+      win_rate: Math.round((r.quotes.filter(q => q.accepted).length / r.quotes.length) * 100),
+      count: r.quotes.length,
+    }));
+
+    const bestRange = [...priceRanges].sort((a, b) => b.win_rate - a.win_rate)[0];
+
+    // Trend: last 3 months vs previous 3 months
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const recentQuotes = quotes.filter(q => q.created_at >= threeMonthsAgo);
+    const olderQuotes = quotes.filter(q => q.created_at >= sixMonthsAgo && q.created_at < threeMonthsAgo);
+    const recentWinRate = recentQuotes.length > 0
+      ? (recentQuotes.filter(q => q.status === 'ACCEPTED').length / recentQuotes.length) * 100 : 0;
+    const olderWinRate = olderQuotes.length > 0
+      ? (olderQuotes.filter(q => q.status === 'ACCEPTED').length / olderQuotes.length) * 100 : 0;
+
+    const biggestRejections = rejected
+      .sort((a, b) => b.total_pence - a.total_pence)
+      .slice(0, 3)
+      .map(q => ({
+        reference: q.reference ?? '(no reference)',
+        amount_pounds: (q.total_pence / 100).toFixed(2),
+        customer: q.customer?.name ?? null,
+        date: q.created_at.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }),
+      }));
+
+    return {
+      job_type: (args.job_type as string | undefined) ?? 'all jobs',
+      period: 'Last 12 months',
+      total_quotes: quotes.length,
+      accepted: accepted.length,
+      rejected: rejected.length,
+      expired: expired.length,
+      win_rate_percent: Math.round(winRate),
+      avg_accepted_pounds: (acceptedAvg / 100).toFixed(2),
+      avg_rejected_pounds: (rejectedAvg / 100).toFixed(2),
+      price_gap: rejectedAvg > acceptedAvg
+        ? `Rejected quotes average £${((rejectedAvg - acceptedAvg) / 100).toFixed(0)} more than accepted ones`
+        : null,
+      sweet_spot: bestRange ? { range: bestRange.range_pounds, win_rate: bestRange.win_rate } : null,
+      price_ranges: priceRanges,
+      trend: {
+        recent_win_rate: Math.round(recentWinRate),
+        previous_win_rate: Math.round(olderWinRate),
+        direction: recentWinRate > olderWinRate ? 'improving' : recentWinRate < olderWinRate ? 'declining' : 'stable',
+      },
+      biggest_rejections: biggestRejections,
     };
   }
 
