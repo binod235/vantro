@@ -370,6 +370,7 @@ model Company {
   jsr_next_number   Int    @default(1)
   jsr_prefix        String @default("JSR")
   jsr_default_terms String?
+  pipInsights       PipInsight[]
 }
 
 model Customer {
@@ -1277,4 +1278,24 @@ model CommunicationLog {
   @@index([company_id, customer_id])
   @@index([company_id, job_id])
   @@index([sent_at])
+}
+
+model PipInsight {
+  id           String   @id @default(cuid())
+  company_id   String
+  company      Company  @relation(fields: [company_id], references: [id])
+  type         String
+  title        String
+  message      String
+  severity     String   @default("INFO")
+  action_label String?
+  action_type  String?
+  action_data  Json?
+  is_read      Boolean  @default(false)
+  is_dismissed Boolean  @default(false)
+  created_at   DateTime @default(now())
+  expires_at   DateTime
+
+  @@index([company_id, is_read, created_at])
+  @@index([company_id, expires_at])
 }

@@ -1,7 +1,8 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { IsArray, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AiService } from './ai.service';
+import { PipInsightsService } from './pip-insights.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 
@@ -41,7 +42,10 @@ class SmartWriteDto {
 
 @Controller('ai')
 export class AiController {
-  constructor(private readonly ai: AiService) {}
+  constructor(
+    private readonly ai: AiService,
+    private readonly pipInsights: PipInsightsService,
+  ) {}
 
   @Post('chat')
   @Roles('OWNER')
@@ -61,5 +65,33 @@ export class AiController {
   @Post('smart-write')
   smartWrite(@Body() body: SmartWriteDto) {
     return this.ai.smartWrite(body.text, body.context, body.action);
+  }
+
+  @Get('insights')
+  @Roles('OWNER')
+  getInsights(@CurrentUser() user: { companyId: string }) {
+    return this.pipInsights.getUnread(user.companyId!);
+  }
+
+  @Get('insights/count')
+  @Roles('OWNER')
+  async getInsightCount(@CurrentUser() user: { companyId: string }) {
+    const count = await this.pipInsights.getUnreadCount(user.companyId!);
+    return { count };
+  }
+
+  @Post('insights/mark-read')
+  @Roles('OWNER')
+  markInsightsRead(@CurrentUser() user: { companyId: string }) {
+    return this.pipInsights.markRead(user.companyId!);
+  }
+
+  @Delete('insights/:id')
+  @Roles('OWNER')
+  dismissInsight(
+    @CurrentUser() user: { companyId: string },
+    @Param('id') id: string,
+  ) {
+    return this.pipInsights.dismiss(user.companyId!, id);
   }
 }
