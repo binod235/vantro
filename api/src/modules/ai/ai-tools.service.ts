@@ -438,6 +438,76 @@ Do NOT use prepare_form for:
           },
         },
       },
+
+      // ── REMINDERS ─────────────────────────────────────────────────────────────
+      {
+        type: 'function',
+        function: {
+          name: 'create_reminder',
+          description: `Create a reminder for a future date. Use this when the user says "remind me", "follow up", "chase", "check on", "don't forget" or similar. Creates a todo item that will appear in the morning briefing on the due date.`,
+          parameters: {
+            type: 'object',
+            properties: {
+              title: {
+                type: 'string',
+                description: 'What to be reminded about (e.g. "Follow up with James Fletcher about boiler quote")',
+              },
+              due_date: {
+                type: 'string',
+                description: 'When to be reminded, in YYYY-MM-DD format. Resolve relative dates like "tomorrow", "next Tuesday", "in 3 days" using today\'s date from the system prompt.',
+              },
+              priority: {
+                type: 'string',
+                enum: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'],
+                description: 'Priority level. Default MEDIUM. Use HIGH for money-related follow-ups, URGENT only if user explicitly says it\'s urgent.',
+              },
+              customer_name: {
+                type: 'string',
+                description: 'Related customer name if mentioned (for linking)',
+              },
+              notes: {
+                type: 'string',
+                description: 'Any additional context the user mentioned',
+              },
+            },
+            required: ['title', 'due_date'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'list_reminders',
+          description: 'List upcoming reminders/todos. Use when the user asks "what reminders do I have", "what\'s coming up", "any follow-ups due".',
+          parameters: {
+            type: 'object',
+            properties: {
+              period: {
+                type: 'string',
+                enum: ['today', 'this_week', 'next_week', 'all_upcoming'],
+                description: 'Time period to show',
+              },
+            },
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'complete_reminder',
+          description: 'Mark a reminder/todo as done. Use when the user says "done", "completed", "mark as done" about a specific reminder.',
+          parameters: {
+            type: 'object',
+            properties: {
+              search: {
+                type: 'string',
+                description: 'Search text to find the reminder (partial title match)',
+              },
+            },
+            required: ['search'],
+          },
+        },
+      },
     ];
   }
 
@@ -551,6 +621,11 @@ Do NOT use prepare_form for:
       case 'get_profit_and_loss':          return this.executeGetProfitAndLoss(companyId, a);
       case 'generate_business_report':     return this.executeGenerateBusinessReport(companyId, a);
       case 'prepare_form':                 return this.executePrepareForm(companyId, a);
+
+      // Reminder tools
+      case 'create_reminder':              return this.executeCreateReminder(companyId, _userId, a);
+      case 'list_reminders':               return this.executeListReminders(companyId, a);
+      case 'complete_reminder':            return this.executeCompleteReminder(companyId, a);
 
       default:
         return { error: true, message: `Unknown tool: ${toolName}` };
@@ -2058,5 +2133,183 @@ Do NOT use prepare_form for:
         return { start, end, label: 'This week' };
       }
     }
+  }
+
+  // ── Reminder implementations ─────────────────────────────────────────────────
+
+  private async executeCreateReminder(
+    companyId: string,
+    userId: string,
+    args: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const title = args.title as string;
+    const dueDate = new Date(args.due_date as string);
+    const priority = (args.priority as string | undefined) ?? 'MEDIUM';
+    const notes = (args.notes as string | undefined) ?? null;
+    const customerName = args.customer_name as string | undefined;
+
+    let description = notes;
+
+    // If customer name given, search and append to description (Todo has no customer_id)
+    if (customerName) {
+      const customers = await this.prisma.client.customer.findMany({
+        where: { company_id: companyId, name: { contains: customerName, mode: 'insensitive' } },
+        select: { name: true },
+        take: 1,
+      });
+      const matched = customers[0]?.name ?? customerName;
+      if (notes) {
+        description = `Re: ${matched}\n${notes}`;
+      } else {
+        description = `Re: ${matched}`;
+      }
+    }
+
+    const todo = await this.prisma.client.todo.create({
+      data: {
+        company_id: companyId,
+        title,
+        description,
+        due_date: dueDate,
+        priority: priority as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
+        status: 'OPEN',
+        created_by_id: userId,
+      },
+    });
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    let dueLabel: string;
+    if (diffDays === 0) dueLabel = 'today';
+    else if (diffDays === 1) dueLabel = 'tomorrow';
+    else if (diffDays <= 7) {
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      dueLabel = dayNames[dueDate.getDay()];
+    } else {
+      dueLabel = dueDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+    }
+
+    return {
+      success: true,
+      reminder_id: todo.id,
+      title,
+      due: dueLabel,
+      due_date: args.due_date,
+      priority,
+      message: `Reminder set for ${dueLabel}: "${title}"`,
+    };
+  }
+
+  private async executeListReminders(
+    companyId: string,
+    args: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const period = (args.period as string | undefined) ?? 'all_upcoming';
+
+    let dateFilter: { gte?: Date; lt?: Date } = {};
+    let periodLabel = 'upcoming';
+
+    switch (period) {
+      case 'today':
+        dateFilter = { gte: today, lt: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
+        periodLabel = 'today';
+        break;
+      case 'this_week': {
+        const endOfWeek = new Date(today);
+        endOfWeek.setDate(endOfWeek.getDate() + (7 - endOfWeek.getDay()));
+        dateFilter = { gte: today, lt: endOfWeek };
+        periodLabel = 'this week';
+        break;
+      }
+      case 'next_week': {
+        const startNext = new Date(today);
+        startNext.setDate(startNext.getDate() + (7 - startNext.getDay()));
+        const endNext = new Date(startNext.getTime() + 7 * 24 * 60 * 60 * 1000);
+        dateFilter = { gte: startNext, lt: endNext };
+        periodLabel = 'next week';
+        break;
+      }
+      default:
+        dateFilter = { gte: today };
+        periodLabel = 'upcoming';
+    }
+
+    const [todos, overdue] = await Promise.all([
+      this.prisma.client.todo.findMany({
+        where: { company_id: companyId, status: 'OPEN', due_date: dateFilter },
+        orderBy: [{ priority: 'desc' }, { due_date: 'asc' }],
+        take: 15,
+      }),
+      this.prisma.client.todo.findMany({
+        where: { company_id: companyId, status: 'OPEN', due_date: { lt: today } },
+        orderBy: { due_date: 'asc' },
+        take: 5,
+      }),
+    ]);
+
+    return {
+      period: periodLabel,
+      reminders: todos.map(t => ({
+        id: t.id,
+        title: t.title,
+        due_date: t.due_date ? t.due_date.toISOString().split('T')[0] : null,
+        priority: t.priority,
+        description: t.description,
+      })),
+      overdue: overdue.map(t => ({
+        id: t.id,
+        title: t.title,
+        due_date: t.due_date ? t.due_date.toISOString().split('T')[0] : null,
+        priority: t.priority,
+        days_overdue: t.due_date
+          ? Math.floor((now.getTime() - t.due_date.getTime()) / (1000 * 60 * 60 * 24))
+          : 0,
+      })),
+      total_upcoming: todos.length,
+      total_overdue: overdue.length,
+    };
+  }
+
+  private async executeCompleteReminder(
+    companyId: string,
+    args: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const search = args.search as string;
+
+    const todos = await this.prisma.client.todo.findMany({
+      where: {
+        company_id: companyId,
+        status: 'OPEN',
+        title: { contains: search, mode: 'insensitive' },
+      },
+      take: 3,
+    });
+
+    if (todos.length === 0) {
+      return { success: false, message: `No open reminder found matching "${search}".` };
+    }
+
+    if (todos.length > 1) {
+      return {
+        success: false,
+        message: `Found ${todos.length} reminders matching "${search}": ${todos.map(t => `"${t.title}"`).join(', ')}. Please be more specific.`,
+        matches: todos.map(t => ({ id: t.id, title: t.title })),
+      };
+    }
+
+    await this.prisma.client.todo.update({
+      where: { id: todos[0].id },
+      data: { status: 'DONE', done_at: new Date() },
+    });
+
+    return {
+      success: true,
+      message: `Done! Marked "${todos[0].title}" as completed.`,
+      reminder_id: todos[0].id,
+      title: todos[0].title,
+    };
   }
 }

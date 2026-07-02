@@ -173,6 +173,47 @@ export class PipInsightsService {
       });
     }
 
+    // 6. Todos/reminders due today or overdue
+    const [dueTodos, overdueTodos] = await Promise.all([
+      this.prisma.client.todo.findMany({
+        where: {
+          company_id: companyId,
+          status: 'OPEN',
+          due_date: { gte: todayStart, lt: todayEnd },
+        },
+        orderBy: { priority: 'desc' },
+        take: 5,
+        select: { title: true },
+      }),
+      this.prisma.client.todo.findMany({
+        where: {
+          company_id: companyId,
+          status: 'OPEN',
+          due_date: { lt: todayStart },
+        },
+        orderBy: { due_date: 'asc' },
+        take: 3,
+        select: { title: true },
+      }),
+    ]);
+
+    if (dueTodos.length > 0 || overdueTodos.length > 0) {
+      const allDue = [...overdueTodos, ...dueTodos];
+      const titles = allDue.slice(0, 3).map(t => t.title).join(', ');
+      const more = allDue.length > 3 ? ` + ${allDue.length - 3} more` : '';
+      insights.push({
+        type: 'REMINDERS_DUE',
+        title: overdueTodos.length > 0
+          ? `${overdueTodos.length} overdue + ${dueTodos.length} reminder${dueTodos.length !== 1 ? 's' : ''} due today`
+          : `${dueTodos.length} reminder${dueTodos.length > 1 ? 's' : ''} due today`,
+        message: titles + more,
+        severity: overdueTodos.length > 0 ? 'WARNING' : 'INFO',
+        action_label: 'View to-do list',
+        action_type: 'navigate',
+        action_data: { url: '/dashboard/todos' },
+      });
+    }
+
     if (insights.length === 0) return;
 
     const expiresAt = new Date(now);
