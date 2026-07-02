@@ -1,5 +1,5 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { IsArray, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AiService } from './ai.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -27,6 +27,18 @@ class ChatDto {
   confirmedAction?: { tool: string; args: Record<string, unknown> };
 }
 
+class SmartWriteDto {
+  @IsString()
+  text!: string;
+
+  @IsString()
+  context!: string;
+
+  @IsString()
+  @IsIn(['improve', 'expand', 'shorten', 'professional'])
+  action!: string;
+}
+
 @Controller('ai')
 export class AiController {
   constructor(private readonly ai: AiService) {}
@@ -44,5 +56,10 @@ export class AiController {
       body.conversationHistory ?? [],
       body.confirmedAction,
     );
+  }
+
+  @Post('smart-write')
+  smartWrite(@Body() body: SmartWriteDto) {
+    return this.ai.smartWrite(body.text, body.context, body.action);
   }
 }

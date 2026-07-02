@@ -212,6 +212,69 @@ Rules:
     return data.choices[0].message;
   }
 
+  async smartWrite(text: string, context: string, action: string): Promise<{ result: string }> {
+    const contextDescriptions: Record<string, string> = {
+      quote_description:  'a quote description for a plumbing/heating job sent to a customer',
+      invoice_notes:      'notes on an invoice sent to a customer',
+      job_description:    'an internal job description for a plumbing/heating task',
+      job_notes:          'completion notes for a plumbing/heating job',
+      gas_cert_notes:     'technical notes on a gas safety certificate',
+      customer_notes:     'notes about a customer',
+      general:            'text for a UK plumbing and heating business',
+    };
+
+    const actionInstructions: Record<string, string> = {
+      improve:      'Rewrite this text to be clear, professional, and well-structured. Fix any spelling or grammar errors. Keep the same meaning.',
+      expand:       'Expand this brief text into a detailed, professional description. Add relevant technical details that a plumber would typically include. Keep it factual — do not invent specific measurements or readings.',
+      shorten:      'Shorten this text to be concise while keeping all key information. Remove unnecessary words.',
+      professional: 'Rewrite this text in a professional tone suitable for sending to a customer. Make it polished but not overly formal — friendly and competent.',
+    };
+
+    const contextDesc = contextDescriptions[context] ?? contextDescriptions['general'];
+    const actionDesc  = actionInstructions[action]  ?? actionInstructions['improve'];
+
+    const prompt = `You are a writing assistant for a UK plumbing and heating business.
+
+The user has written the following text for ${contextDesc}:
+
+"${text}"
+
+${actionDesc}
+
+Rules:
+- Use British English spelling (colour, organise, etc.)
+- Use proper plumbing/heating terminology where appropriate
+- Keep it natural — don't sound robotic or overly corporate
+- Don't add information the user didn't mention (don't invent specific readings, pressures, or model numbers)
+- If the input is very short (a few words), expand it into a proper sentence or two
+- If the input is already good, make minimal changes
+- Return ONLY the improved text, nothing else — no quotes, no explanation, no preamble`;
+
+    const res = await fetch(
+      `${process.env.AI_API_URL ?? 'https://api.fireworks.ai/inference/v1'}/chat/completions`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.AI_API_KEY ?? ''}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: process.env.AI_MODEL ?? 'accounts/fireworks/models/deepseek-v4-flash',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 1024,
+          temperature: 0.5,
+        }),
+      },
+    );
+
+    if (!res.ok) throw new Error('SmartWrite failed');
+
+    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
+    const raw = data.choices?.[0]?.message?.content?.trim() ?? text;
+    const cleaned = raw.replace(/^["']|["']$/g, '');
+    return { result: cleaned };
+  }
+
   private isRiskyAction(toolName: string): boolean {
     return [
       'create_invoice_from_quote',
