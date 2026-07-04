@@ -713,9 +713,235 @@ Do NOT use prepare_form for:
       case 'list_reminders':               return this.executeListReminders(companyId, a);
       case 'complete_reminder':            return this.executeCompleteReminder(companyId, a);
 
+      // Engineer tools
+      case 'get_my_todays_jobs':       return this.executeGetMyTodaysJobs(companyId, _userId);
+      case 'get_my_next_job':          return this.executeGetMyNextJob(companyId, _userId);
+      case 'get_my_week':              return this.executeGetMyWeek(companyId, _userId);
+      case 'get_job_details':          return this.executeGetJobDetails(companyId, _userId, a);
+      case 'get_address_history':      return this.executeGetAddressHistory(companyId, a);
+      case 'check_job_completion':     return this.executeCheckJobCompletion(companyId, _userId, a);
+      case 'get_my_hours':             return this.executeGetMyHours(companyId, _userId, a);
+      case 'technical_reference':      return this.executeGetTechnicalReference(a);
+      case 'add_job_note':             return this.executeAddJobNote(companyId, _userId, a);
+      case 'running_late':             return this.executeRunningLate(companyId, _userId, a);
+      case 'log_materials':            return this.executeLogMaterials(companyId, _userId, a);
+      case 'get_previous_readings':    return this.executeGetPreviousReadings(companyId, a);
+      case 'get_end_of_day_summary':   return this.executeGetEndOfDaySummary(companyId, _userId);
+      case 'get_safety_checklist':     return this.executeGetSafetyChecklist(a);
+      case 'get_photo_guidance':       return this.executeGetPhotoGuidance(a);
+
       default:
         return { error: true, message: `Unknown tool: ${toolName}` };
     }
+  }
+
+  getEngineerToolDefinitions() {
+    return [
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_my_todays_jobs',
+          description: "Get the engineer's own jobs scheduled for today",
+          parameters: { type: 'object' as const, properties: {} },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_my_next_job',
+          description: "Get the engineer's next upcoming job with full details including customer address and phone",
+          parameters: { type: 'object' as const, properties: {} },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_my_week',
+          description: "Get the engineer's schedule for this week",
+          parameters: { type: 'object' as const, properties: {} },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_job_details',
+          description: 'Get full details of a specific job assigned to this engineer by title or customer name',
+          parameters: {
+            type: 'object' as const,
+            properties: {
+              search: { type: 'string', description: 'Job title or customer name to search' },
+            },
+            required: ['search'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_address_history',
+          description: `Get the history of previous work done at a customer's address. Use when engineer asks "what was done here before", "previous visits", "history at this address".`,
+          parameters: {
+            type: 'object' as const,
+            properties: {
+              customer_name: { type: 'string', description: 'Customer name to look up' },
+            },
+            required: ['customer_name'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'check_job_completion',
+          description: `Check if a job has everything needed to be marked complete — photos, notes, timesheet, gas cert. Use when engineer asks "can I close this", "is this job done", "what's missing".`,
+          parameters: {
+            type: 'object' as const,
+            properties: {
+              search: { type: 'string', description: 'Job title or customer name' },
+            },
+            required: ['search'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_my_hours',
+          description: "Get the engineer's own timesheet hours for today, this week, or last week",
+          parameters: {
+            type: 'object' as const,
+            properties: {
+              period: { type: 'string', enum: ['today', 'this_week', 'last_week'] },
+            },
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'technical_reference',
+          description: `Answer plumbing and heating technical questions — gas safety regulations, boiler specs, pipe sizing, flow rates, flue clearances, Building Regs Part J/L, Gas Safe requirements, water bylaws.`,
+          parameters: {
+            type: 'object' as const,
+            properties: {
+              question: { type: 'string', description: 'The technical question' },
+            },
+            required: ['question'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'add_job_note',
+          description: `Add a timestamped note to a job. Use when the engineer wants to record what they did, what they found, or what needs following up.`,
+          parameters: {
+            type: 'object' as const,
+            properties: {
+              search: { type: 'string', description: 'Job title or customer name' },
+              note: { type: 'string', description: 'The note to add' },
+            },
+            required: ['search', 'note'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'running_late',
+          description: `Notify the office that the engineer is running late to a job. Use when engineer says "running late", "delayed", "stuck in traffic", "won't make it on time".`,
+          parameters: {
+            type: 'object' as const,
+            properties: {
+              customer_name: { type: 'string', description: 'Which customer/job' },
+              delay_minutes: { type: 'number', description: 'Estimated delay in minutes' },
+              reason: { type: 'string', description: 'Brief reason: traffic, previous job overran, etc.' },
+            },
+            required: ['customer_name'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'log_materials',
+          description: `Log materials/parts used on a job. Use when engineer says "I used", "parts used", "fitted a", "installed", "replaced with". Records what was used so the owner can bill for materials.`,
+          parameters: {
+            type: 'object' as const,
+            properties: {
+              search: { type: 'string', description: 'Job title or customer name' },
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    description: { type: 'string', description: 'Part/material name' },
+                    quantity: { type: 'number', description: 'How many' },
+                  },
+                  required: ['description'],
+                },
+                description: 'List of parts/materials used',
+              },
+            },
+            required: ['search', 'items'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_previous_readings',
+          description: `Get previous gas certificate readings for a property. Use when engineer asks "what were the readings last time", "previous CO readings", "last gas cert results".`,
+          parameters: {
+            type: 'object' as const,
+            properties: {
+              customer_name: { type: 'string', description: 'Customer name' },
+            },
+            required: ['customer_name'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_end_of_day_summary',
+          description: `Get a summary of the engineer's day — jobs done, hours logged, active timers, missing documentation. Use when engineer says "day summary", "am I done", "end of day", "heading home".`,
+          parameters: { type: 'object' as const, properties: {} },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_safety_checklist',
+          description: `Get a safety checklist for the type of work being done. Use when engineer asks about safety checks, what to check before starting.`,
+          parameters: {
+            type: 'object' as const,
+            properties: {
+              job_type: {
+                type: 'string',
+                enum: ['gas_service', 'gas_install', 'boiler_repair', 'unvented_cylinder', 'bathroom', 'radiators', 'leak_repair', 'general_plumbing'],
+                description: 'Type of work',
+              },
+            },
+            required: ['job_type'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_photo_guidance',
+          description: `Suggest what photos to take for this type of job. Use when engineer asks "what photos do I need" or "what should I photograph".`,
+          parameters: {
+            type: 'object' as const,
+            properties: {
+              job_type: { type: 'string', description: 'Type of work being done' },
+            },
+            required: ['job_type'],
+          },
+        },
+      },
+    ];
   }
 
   // ── Job implementations ─────────────────────────────────────────────────────
@@ -3018,6 +3244,666 @@ ${signature}`,
         body: draft,
       },
       message: `Here's a draft email for ${customer?.name ?? recipientName}. Review and edit before sending.`,
+    };
+  }
+
+  // ── ENGINEER TOOLS ────────────────────────────────────────────────────────
+
+  private async executeGetMyTodaysJobs(companyId: string, userId: string): Promise<ToolResult> {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const jobs = await this.prisma.client.job.findMany({
+      where: {
+        company_id: companyId,
+        engineer_id: userId,
+        scheduled_at: { gte: startOfDay, lte: endOfDay },
+      },
+      include: { customer: true },
+      orderBy: { scheduled_at: 'asc' },
+    });
+
+    if (jobs.length === 0) return { message: "You have no jobs scheduled for today." };
+
+    return {
+      date: startOfDay.toDateString(),
+      job_count: jobs.length,
+      jobs: jobs.map(j => ({
+        id: j.id,
+        title: j.title,
+        status: j.status,
+        scheduled_at: j.scheduled_at?.toISOString() ?? null,
+        duration_minutes: j.duration_minutes,
+        customer: j.customer ? {
+          name: j.customer.name,
+          phone: j.customer.phone,
+          address: [j.customer.address_line1, j.customer.city, j.customer.postcode].filter(Boolean).join(', '),
+        } : null,
+      })),
+    };
+  }
+
+  private async executeGetMyNextJob(companyId: string, userId: string): Promise<ToolResult> {
+    const now = new Date();
+    const job = await this.prisma.client.job.findFirst({
+      where: {
+        company_id: companyId,
+        engineer_id: userId,
+        scheduled_at: { gte: now },
+        status: { notIn: [JobStatus.COMPLETED, JobStatus.INVOICED] },
+      },
+      include: { customer: true },
+      orderBy: { scheduled_at: 'asc' },
+    });
+
+    if (!job) return { message: "No upcoming jobs scheduled." };
+
+    return {
+      id: job.id,
+      title: job.title,
+      description: job.description,
+      status: job.status,
+      scheduled_at: job.scheduled_at?.toISOString() ?? null,
+      duration_minutes: job.duration_minutes,
+      schedule_note: job.schedule_note,
+      notes: job.notes,
+      customer: job.customer ? {
+        name: job.customer.name,
+        phone: job.customer.phone,
+        email: job.customer.email,
+        address: [job.customer.address_line1, job.customer.address_line2, job.customer.city, job.customer.postcode].filter(Boolean).join(', '),
+      } : null,
+    };
+  }
+
+  private async executeGetMyWeek(companyId: string, userId: string): Promise<ToolResult> {
+    const now = new Date();
+    const day = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+
+    const jobs = await this.prisma.client.job.findMany({
+      where: {
+        company_id: companyId,
+        engineer_id: userId,
+        scheduled_at: { gte: monday, lte: sunday },
+      },
+      include: { customer: true },
+      orderBy: { scheduled_at: 'asc' },
+    });
+
+    const byDay: Record<string, unknown[]> = {};
+    for (const j of jobs) {
+      const dateKey = j.scheduled_at?.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' }) ?? 'Unscheduled';
+      if (!byDay[dateKey]) byDay[dateKey] = [];
+      byDay[dateKey].push({
+        id: j.id,
+        title: j.title,
+        status: j.status,
+        time: j.scheduled_at?.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) ?? null,
+        customer: j.customer?.name ?? null,
+        address: j.customer ? [j.customer.address_line1, j.customer.city].filter(Boolean).join(', ') : null,
+      });
+    }
+
+    return {
+      week_start: monday.toDateString(),
+      week_end: sunday.toDateString(),
+      total_jobs: jobs.length,
+      schedule: byDay,
+    };
+  }
+
+  private async executeGetJobDetails(companyId: string, userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const search = (args.search as string | undefined) ?? '';
+
+    const jobs = await this.prisma.client.job.findMany({
+      where: {
+        company_id: companyId,
+        engineer_id: userId,
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { customer: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      },
+      include: {
+        customer: true,
+        gasCertificates: { select: { id: true, cert_type: true, status: true, inspection_date: true } },
+        timesheets: { select: { id: true, date: true, duration_minutes: true } },
+        photos: { select: { id: true, phase: true } },
+      },
+      orderBy: { scheduled_at: 'desc' },
+      take: 3,
+    });
+
+    if (jobs.length === 0) return { message: `No jobs found matching "${search}".` };
+
+    return {
+      jobs: jobs.map(j => ({
+        id: j.id,
+        title: j.title,
+        description: j.description,
+        status: j.status,
+        scheduled_at: j.scheduled_at?.toISOString() ?? null,
+        duration_minutes: j.duration_minutes,
+        notes: j.notes,
+        schedule_note: j.schedule_note,
+        customer: j.customer ? {
+          name: j.customer.name,
+          phone: j.customer.phone,
+          email: j.customer.email,
+          address: [j.customer.address_line1, j.customer.address_line2, j.customer.city, j.customer.postcode].filter(Boolean).join(', '),
+        } : null,
+        gas_certificates: j.gasCertificates.map(c => ({ type: c.cert_type, status: c.status, date: c.inspection_date.toISOString() })),
+        timesheet_entries: j.timesheets.length,
+        photos: j.photos.length,
+      })),
+    };
+  }
+
+  private async executeGetAddressHistory(companyId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const customerName = (args.customer_name as string | undefined) ?? '';
+
+    const customer = await this.prisma.client.customer.findFirst({
+      where: { company_id: companyId, name: { contains: customerName, mode: 'insensitive' } },
+    });
+
+    if (!customer) return { message: `No customer found matching "${customerName}".` };
+
+    const jobs = await this.prisma.client.job.findMany({
+      where: { company_id: companyId, customer_id: customer.id },
+      include: {
+        gasCertificates: { select: { cert_type: true, status: true, inspection_date: true } },
+      },
+      orderBy: { scheduled_at: 'desc' },
+      take: 20,
+    });
+
+    return {
+      customer: customer.name,
+      address: [customer.address_line1, customer.address_line2, customer.city, customer.postcode].filter(Boolean).join(', '),
+      total_visits: jobs.length,
+      history: jobs.map(j => ({
+        title: j.title,
+        status: j.status,
+        date: j.scheduled_at?.toLocaleDateString('en-GB') ?? j.created_at.toLocaleDateString('en-GB'),
+        notes: j.notes,
+        gas_certs: j.gasCertificates.map(c => c.cert_type),
+      })),
+    };
+  }
+
+  private async executeCheckJobCompletion(companyId: string, userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const search = (args.search as string | undefined) ?? '';
+
+    const job = await this.prisma.client.job.findFirst({
+      where: {
+        company_id: companyId,
+        engineer_id: userId,
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { customer: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      },
+      include: {
+        customer: true,
+        gasCertificates: { select: { id: true, cert_type: true, status: true } },
+        timesheets: { select: { id: true } },
+        photos: { select: { id: true, phase: true } },
+        activeTimers: { select: { id: true } },
+      },
+      orderBy: { scheduled_at: 'desc' },
+    });
+
+    if (!job) return { message: `No job found matching "${search}".` };
+
+    const hasPhotos = job.photos.length > 0;
+    const hasNotes = !!job.notes?.trim();
+    const hasTimesheet = job.timesheets.length > 0;
+    const timerRunning = job.activeTimers.length > 0;
+    const gasCertRequired = ['CP12', 'BOILER_SERVICE', 'INSTALLATION'].some(t =>
+      job.title.toLowerCase().includes('gas') || job.title.toLowerCase().includes('boiler') || job.title.toLowerCase().includes('cp12')
+    );
+    const gasCertDone = job.gasCertificates.some(c => c.status === 'COMPLETE');
+
+    const checklist = [
+      { item: 'Photos taken', done: hasPhotos, count: job.photos.length },
+      { item: 'Job notes added', done: hasNotes },
+      { item: 'Time logged', done: hasTimesheet },
+      { item: 'Timer stopped', done: !timerRunning, warning: timerRunning ? 'Timer is still running!' : null },
+      ...(gasCertRequired ? [{ item: 'Gas certificate completed', done: gasCertDone }] : []),
+    ];
+
+    const allDone = checklist.every(c => c.done);
+
+    return {
+      job: job.title,
+      customer: job.customer?.name ?? null,
+      status: job.status,
+      ready_to_close: allDone,
+      checklist,
+      message: allDone
+        ? 'Everything looks good — you can mark this job complete.'
+        : `${checklist.filter(c => !c.done).length} item(s) still needed before closing.`,
+    };
+  }
+
+  private async executeGetMyHours(companyId: string, userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const period = (args.period as string | undefined) ?? 'today';
+
+    const now = new Date();
+    let start: Date;
+    let end: Date;
+    let label: string;
+
+    if (period === 'today') {
+      start = new Date(now); start.setHours(0, 0, 0, 0);
+      end = new Date(now); end.setHours(23, 59, 59, 999);
+      label = 'Today';
+    } else if (period === 'last_week') {
+      const day = now.getDay();
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1) - 7);
+      monday.setHours(0, 0, 0, 0);
+      start = monday;
+      end = new Date(monday); end.setDate(monday.getDate() + 6); end.setHours(23, 59, 59, 999);
+      label = 'Last week';
+    } else {
+      const day = now.getDay();
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+      monday.setHours(0, 0, 0, 0);
+      start = monday;
+      end = new Date(monday); end.setDate(monday.getDate() + 6); end.setHours(23, 59, 59, 999);
+      label = 'This week';
+    }
+
+    const [timesheets, activeTimer] = await Promise.all([
+      this.prisma.client.timesheet.findMany({
+        where: { company_id: companyId, user_id: userId, date: { gte: start, lte: end } },
+        include: { job: { select: { title: true } } },
+        orderBy: { date: 'asc' },
+      }),
+      this.prisma.client.activeTimer.findFirst({
+        where: { company_id: companyId, user_id: userId },
+        include: { job: { select: { title: true } } },
+      }),
+    ]);
+
+    const totalMinutes = timesheets.reduce((sum, t) => sum + t.duration_minutes, 0);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    return {
+      period: label,
+      total_hours: `${hours}h ${minutes}m`,
+      total_minutes: totalMinutes,
+      entry_count: timesheets.length,
+      active_timer: activeTimer ? {
+        job: activeTimer.job.title,
+        started_at: activeTimer.started_at.toISOString(),
+        elapsed_minutes: Math.floor((Date.now() - activeTimer.started_at.getTime()) / 60000),
+      } : null,
+      entries: timesheets.map(t => ({
+        date: t.date.toLocaleDateString('en-GB'),
+        job: t.job?.title ?? null,
+        duration: `${Math.floor(t.duration_minutes / 60)}h ${t.duration_minutes % 60}m`,
+      })),
+    };
+  }
+
+  private executeGetTechnicalReference(args: Record<string, unknown>): ToolResult {
+    return {
+      action: 'answer_from_knowledge',
+      question: args.question as string,
+    };
+  }
+
+  private async executeAddJobNote(companyId: string, userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const search = (args.search as string | undefined) ?? '';
+    const note = (args.note as string | undefined) ?? '';
+
+    const job = await this.prisma.client.job.findFirst({
+      where: {
+        company_id: companyId,
+        engineer_id: userId,
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { customer: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      },
+      orderBy: { scheduled_at: 'desc' },
+    });
+
+    if (!job) return { error: true, message: `No job found matching "${search}".` };
+
+    const timestamp = new Date().toLocaleString('en-GB', { timeZone: 'Europe/London' });
+    const newNote = `[${timestamp}] ${note}`;
+    const updatedNotes = job.notes ? `${job.notes}\n\n${newNote}` : newNote;
+
+    await this.prisma.client.job.update({
+      where: { id: job.id },
+      data: { notes: updatedNotes },
+    });
+
+    return { success: true, job: job.title, note_added: newNote };
+  }
+
+  private async executeRunningLate(companyId: string, userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const customerName = (args.customer_name as string | undefined) ?? '';
+    const delayMinutes = (args.delay_minutes as number | undefined) ?? null;
+    const reason = (args.reason as string | undefined) ?? 'Running behind schedule';
+
+    const customer = await this.prisma.client.customer.findFirst({
+      where: { company_id: companyId, name: { contains: customerName, mode: 'insensitive' } },
+    });
+
+    const engineer = await this.prisma.client.user.findUnique({ where: { id: userId } });
+    const engineerName = engineer?.name ?? 'Engineer';
+
+    const delayText = delayMinutes ? `${delayMinutes} minutes` : 'some time';
+    const description = `${engineerName} is running approximately ${delayText} late to ${customer?.name ?? customerName}. Reason: ${reason}`;
+
+    await this.prisma.client.todo.create({
+      data: {
+        company_id: companyId,
+        created_by_id: userId,
+        title: `Running late — ${customer?.name ?? customerName}`,
+        description,
+        priority: 'HIGH',
+        status: 'OPEN',
+      },
+    });
+
+    return {
+      success: true,
+      message: `Office has been notified you are running ${delayText} late to ${customer?.name ?? customerName}.`,
+      todo_created: true,
+    };
+  }
+
+  private async executeLogMaterials(companyId: string, userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const search = (args.search as string | undefined) ?? '';
+    const items = (args.items as Array<{ description: string; quantity?: number }> | undefined) ?? [];
+
+    const job = await this.prisma.client.job.findFirst({
+      where: {
+        company_id: companyId,
+        engineer_id: userId,
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { customer: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      },
+      orderBy: { scheduled_at: 'desc' },
+    });
+
+    if (!job) return { error: true, message: `No job found matching "${search}".` };
+    if (items.length === 0) return { error: true, message: 'No materials specified.' };
+
+    const timestamp = new Date().toLocaleString('en-GB', { timeZone: 'Europe/London' });
+    const materialsText = items.map(i => `  - ${i.quantity ?? 1}x ${i.description}`).join('\n');
+    const noteEntry = `[${timestamp}] Materials used:\n${materialsText}`;
+
+    const updatedNotes = job.notes ? `${job.notes}\n\n${noteEntry}` : noteEntry;
+
+    await this.prisma.client.job.update({
+      where: { id: job.id },
+      data: { notes: updatedNotes },
+    });
+
+    return {
+      success: true,
+      job: job.title,
+      materials_logged: items.length,
+      items: items.map(i => `${i.quantity ?? 1}x ${i.description}`),
+      message: `Logged ${items.length} material(s) on ${job.title}. The owner can use this to raise an invoice.`,
+    };
+  }
+
+  private async executeGetPreviousReadings(companyId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const customerName = (args.customer_name as string | undefined) ?? '';
+
+    const customer = await this.prisma.client.customer.findFirst({
+      where: { company_id: companyId, name: { contains: customerName, mode: 'insensitive' } },
+    });
+
+    if (!customer) return { message: `No customer found matching "${customerName}".` };
+
+    const certs = await this.prisma.client.gasSafetyCertificate.findMany({
+      where: { company_id: companyId, customer_id: customer.id, status: 'COMPLETE' },
+      orderBy: { inspection_date: 'desc' },
+      take: 5,
+    });
+
+    if (certs.length === 0) return { message: `No completed gas certificates found for ${customer.name}.` };
+
+    return {
+      customer: customer.name,
+      address: [customer.address_line1, customer.city, customer.postcode].filter(Boolean).join(', '),
+      certificates: certs.map(c => ({
+        type: c.cert_type,
+        date: c.inspection_date.toLocaleDateString('en-GB'),
+        next_due: c.next_due_date?.toLocaleDateString('en-GB') ?? null,
+        data: c.data,
+        notes: c.notes,
+      })),
+    };
+  }
+
+  private async executeGetEndOfDaySummary(companyId: string, userId: string): Promise<ToolResult> {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const [jobs, timesheets, activeTimer] = await Promise.all([
+      this.prisma.client.job.findMany({
+        where: { company_id: companyId, engineer_id: userId, scheduled_at: { gte: startOfDay, lte: endOfDay } },
+        include: {
+          customer: { select: { name: true } },
+          photos: { select: { id: true } },
+          gasCertificates: { select: { cert_type: true, status: true } },
+        },
+      }),
+      this.prisma.client.timesheet.findMany({
+        where: { company_id: companyId, user_id: userId, date: { gte: startOfDay, lte: endOfDay } },
+      }),
+      this.prisma.client.activeTimer.findFirst({
+        where: { company_id: companyId, user_id: userId },
+        include: { job: { select: { title: true } } },
+      }),
+    ]);
+
+    const totalMinutes = timesheets.reduce((sum, t) => sum + t.duration_minutes, 0);
+    const jobsWithIssues = jobs
+      .map(j => {
+        const issues: string[] = [];
+        if (!j.notes?.trim()) issues.push('no notes');
+        if (j.photos.length === 0) issues.push('no photos');
+        return { job: j.title, customer: j.customer?.name, status: j.status, issues };
+      })
+      .filter(j => j.issues.length > 0);
+
+    return {
+      date: startOfDay.toDateString(),
+      jobs_today: jobs.length,
+      jobs_complete: jobs.filter(j => j.status === JobStatus.COMPLETED).length,
+      total_hours: `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`,
+      active_timer: activeTimer ? `Timer still running on "${activeTimer.job.title}" — remember to clock out!` : null,
+      jobs_needing_attention: jobsWithIssues,
+      all_good: jobsWithIssues.length === 0 && !activeTimer,
+    };
+  }
+
+  private executeGetSafetyChecklist(args: Record<string, unknown>): ToolResult {
+    const jobType = (args.job_type as string | undefined) ?? 'general_plumbing';
+
+    const checklists: Record<string, string[]> = {
+      gas_service: [
+        'Check Gas Safe registration is current',
+        'Visual inspection of pipework for corrosion/damage',
+        'Check all appliance flues are clear and unobstructed',
+        'Test gas tightness — use approved leak detection fluid',
+        'Check ventilation requirements are met (BS 5440)',
+        'Check appliance operating pressure against manufacturer specs',
+        'Check all safety devices operate correctly (overheat stat, pressure relief)',
+        'Record all readings on gas safety certificate',
+        'Advise customer of any defects or advisory items',
+        'Issue Gas Safety Certificate (CP12) on completion',
+      ],
+      gas_install: [
+        'Check Gas Safe registration covers this appliance type',
+        'Notify Gas Safe Register if new installation (within 30 days)',
+        'Check Building Regs notification required (Part J)',
+        'Verify appliance is on approved products list',
+        'Check flue clearances per manufacturer and BS 5440',
+        'Ensure adequate ventilation per BS 5440',
+        'Pressure test all new pipework before connecting appliance',
+        'Commission appliance to manufacturer instructions',
+        'Complete installation certificate and handover to customer',
+        'Register appliance warranty where required',
+      ],
+      boiler_repair: [
+        'Isolate gas and electricity before opening boiler',
+        'Check system pressure before and after repair',
+        'Inspect heat exchanger for signs of leakage or corrosion',
+        'Check flue integrity — no cracks or blockages',
+        'Test all safety controls operate after repair',
+        'Check CO levels with calibrated analyser',
+        'Run appliance through full operating cycle before leaving',
+        'Note any additional defects or advisories in writing',
+      ],
+      unvented_cylinder: [
+        'Check G3 qualification covers this work',
+        'Notify Building Control (Part G) before installation',
+        'Verify expansion vessel pre-charge pressure',
+        'Check pressure relief valve — test operation',
+        'Verify temperature/pressure relief valve (T&PR) discharge pipe routes correctly',
+        'Check expansion relief valve and discharge pipe',
+        'Commission to manufacturer instructions',
+        'Label cylinder with service record card',
+        'Leave commissioning documentation with customer',
+      ],
+      bathroom: [
+        'Check water supply can be isolated before starting',
+        'Verify waste connections comply with water bylaws',
+        'Check macerator installation if fitted — Part H Building Regs',
+        'Ensure shower thermostat set to max 48°C (scalding prevention)',
+        'Check silicon sealing is watertight on all joints',
+        'Test all fixtures and fittings for leaks under pressure',
+      ],
+      radiators: [
+        'Isolate system and drain relevant section before removing radiators',
+        'Check pipework condition when radiator removed',
+        'Use new PTFE and fittings — never reuse old olives',
+        'Refill and vent system thoroughly',
+        'Check system pressure at correct operating level',
+        'Balance system if multiple radiators changed',
+      ],
+      leak_repair: [
+        'Identify and isolate water supply to leak',
+        'Check if leak is on mains or heating circuit',
+        'Take photos before and after repair',
+        'Test repair under pressure before opening supply',
+        'Check for water damage — advise customer in writing if found',
+      ],
+      general_plumbing: [
+        'Identify stop valves before starting work',
+        'Protect flooring and customer property',
+        'Check water regulations compliance for any new connections',
+        'Pressure test new pipework before covering',
+        'Clean up and check for leaks before leaving',
+        'Advise customer of any stop valve or isolation valve issues found',
+      ],
+    };
+
+    const list = checklists[jobType] ?? checklists['general_plumbing'];
+
+    return {
+      job_type: jobType,
+      checklist: list,
+      item_count: list.length,
+      reminder: 'Always consult manufacturer instructions and current BS/Building Regs for the specific appliance.',
+    };
+  }
+
+  private executeGetPhotoGuidance(args: Record<string, unknown>): ToolResult {
+    const jobType = (args.job_type as string | undefined) ?? '';
+
+    const lower = jobType.toLowerCase();
+    let guidance: string[];
+    let label: string;
+
+    if (lower.includes('gas') || lower.includes('boiler') || lower.includes('cp12') || lower.includes('service')) {
+      label = 'Gas/Boiler';
+      guidance = [
+        'Before: existing appliance from the front showing model label',
+        'Before: flue terminal outside the building',
+        'Before: existing pipework and connections',
+        'During: any defects or advisories found',
+        'After: completed appliance/installation',
+        'After: Gas Safety Certificate completed (readable)',
+        'After: appliance data plate / serial number label',
+      ];
+    } else if (lower.includes('bathroom') || lower.includes('toilet') || lower.includes('shower') || lower.includes('bath')) {
+      label = 'Bathroom';
+      guidance = [
+        'Before: existing bathroom from doorway (wide shot)',
+        'Before: existing fixtures showing any damage or issues',
+        'During: rough-in pipework before boarding/tiling',
+        'During: waste connections before covering',
+        'After: finished bathroom from doorway',
+        'After: close-up of each new fixture',
+        'After: silicone sealing finished',
+      ];
+    } else if (lower.includes('leak') || lower.includes('repair')) {
+      label = 'Leak Repair';
+      guidance = [
+        'Before: location of leak clearly showing the affected area',
+        'Before: close-up of the fault',
+        'During: pipework exposed (if applicable)',
+        'After: completed repair',
+        'After: any water damage visible (for customer record)',
+      ];
+    } else if (lower.includes('radiator') || lower.includes('heating')) {
+      label = 'Heating';
+      guidance = [
+        'Before: existing setup',
+        'After: new radiator(s) installed',
+        'After: pipework connections',
+        'After: system pressure gauge reading',
+      ];
+    } else if (lower.includes('cylinder') || lower.includes('unvented')) {
+      label = 'Unvented Cylinder';
+      guidance = [
+        'Before: existing cylinder from front showing model label',
+        'During: discharge pipe routing (T&PR and expansion relief)',
+        'After: installed cylinder from front',
+        'After: pressure relief valve and discharge pipework',
+        'After: commissioning record card attached to cylinder',
+      ];
+    } else {
+      label = 'General';
+      guidance = [
+        'Before: overall area showing existing condition',
+        'Before: close-up of the specific issue or area being worked on',
+        'During: any pipework or work before covering',
+        'After: completed work',
+        'After: any new fittings or connections',
+      ];
+    }
+
+    return {
+      job_type: label,
+      photo_list: guidance,
+      tip: 'Take photos in good light. Make sure model labels and cert numbers are readable. Photos protect you if there are any disputes later.',
     };
   }
 }

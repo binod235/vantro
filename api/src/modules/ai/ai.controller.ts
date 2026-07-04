@@ -84,9 +84,8 @@ export class AiController {
   ) {}
 
   @Post('chat')
-  @Roles('OWNER')
   chat(
-    @CurrentUser() user: { companyId: string; id: string },
+    @CurrentUser() user: { companyId: string; id: string; role: string },
     @Body() body: ChatDto,
   ) {
     return this.ai.chat(
@@ -96,6 +95,7 @@ export class AiController {
       body.conversationHistory ?? [],
       body.confirmedAction,
       body.currentPage,
+      user.role,
     );
   }
 

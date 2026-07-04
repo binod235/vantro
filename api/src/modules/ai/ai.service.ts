@@ -44,7 +44,9 @@ export class AiService {
     history: Array<{ role: string; content: string }>,
     confirmedAction?: { tool: string; args: Record<string, unknown> },
     currentPage?: string,
+    role?: string,
   ) {
+    const isEngineer = role === 'ENGINEER';
     const now = new Date();
     const dayOfWeek = now.toLocaleDateString('en-GB', { weekday: 'long' });
     const dayOfMonth = now.getDate();
@@ -54,65 +56,77 @@ export class AiService {
     // Time-aware context
     let timeContext = `Today is ${dateStr}.`;
     if (dayOfWeek === 'Friday' && hour >= 14) {
-      timeContext += " It's Friday afternoon — good time to send any pending invoices before the weekend.";
+      timeContext += " It's Friday afternoon.";
     } else if (dayOfWeek === 'Monday' && hour < 12) {
-      timeContext += " It's Monday morning — good time for the weekly briefing.";
+      timeContext += " It's Monday morning.";
     }
-    if (dayOfMonth >= 17 && dayOfMonth <= 18) {
-      timeContext += " CIS300 deadline is approaching (19th of the month).";
-    }
-    if (dayOfMonth >= 28 || dayOfMonth <= 2) {
-      timeContext += " It's near month end — good time for a business summary or month-end invoicing.";
+    if (hour >= 16) {
+      timeContext += " It's late afternoon — consider the end-of-day summary.";
     }
 
-    // Page context
-    const pageDescriptions: Record<string, string> = {
-      '/dashboard': 'the main dashboard',
-      '/dashboard/jobs': 'the jobs list',
-      '/dashboard/customers': 'the customers page',
-      '/dashboard/quotes': 'the quotes page',
-      '/dashboard/invoices': 'the invoices page',
-      '/dashboard/cis': 'the CIS Returns page',
-      '/dashboard/subcontractors': 'the subcontractors page',
-      '/dashboard/timesheets': 'the timesheets page',
-      '/dashboard/settings': 'the settings page',
-      '/dashboard/gas-certificates': 'the gas certificates page',
-      '/dashboard/todos': 'the to-do list',
-      '/dashboard/credit-notes': 'the credit notes page',
-      '/dashboard/recurring-invoices': 'the recurring invoices page',
-      '/dashboard/purchase-orders': 'the purchase orders page',
-      '/dashboard/price-lists': 'the price lists page',
-      '/dashboard/reports': 'the reports page',
-    };
-    let pageContext = '';
-    if (currentPage) {
-      const basePage = Object.keys(pageDescriptions)
-        .sort((a, b) => b.length - a.length)
-        .find(p => currentPage.startsWith(p));
-      if (basePage) {
-        pageContext = `\nThe owner is currently viewing ${pageDescriptions[basePage]}. Tailor your response to what they're likely looking at if relevant.`;
+    let systemPrompt: string;
+    let activeTools: unknown[];
+
+    if (isEngineer) {
+      systemPrompt = this.getEngineerPrompt(dateStr, timeContext);
+      activeTools = this.tools.getEngineerToolDefinitions();
+    } else {
+      // Owner: full time context with CIS and month-end hints
+      if (dayOfMonth >= 17 && dayOfMonth <= 18) {
+        timeContext += " CIS300 deadline is approaching (19th of the month).";
       }
-    }
+      if (dayOfMonth >= 28 || dayOfMonth <= 2) {
+        timeContext += " It's near month end — good time for a business summary or month-end invoicing.";
+      }
 
-    // Load recent conversation summaries + business patterns in parallel
-    const [recentContext, patterns] = await Promise.all([
-      this.memory.getRecentContext(companyId, userId),
-      this.getOwnerPatterns(companyId),
-    ]);
+      // Page context
+      const pageDescriptions: Record<string, string> = {
+        '/dashboard': 'the main dashboard',
+        '/dashboard/jobs': 'the jobs list',
+        '/dashboard/customers': 'the customers page',
+        '/dashboard/quotes': 'the quotes page',
+        '/dashboard/invoices': 'the invoices page',
+        '/dashboard/cis': 'the CIS Returns page',
+        '/dashboard/subcontractors': 'the subcontractors page',
+        '/dashboard/timesheets': 'the timesheets page',
+        '/dashboard/settings': 'the settings page',
+        '/dashboard/gas-certificates': 'the gas certificates page',
+        '/dashboard/todos': 'the to-do list',
+        '/dashboard/credit-notes': 'the credit notes page',
+        '/dashboard/recurring-invoices': 'the recurring invoices page',
+        '/dashboard/purchase-orders': 'the purchase orders page',
+        '/dashboard/price-lists': 'the price lists page',
+        '/dashboard/reports': 'the reports page',
+      };
+      let pageContext = '';
+      if (currentPage) {
+        const basePage = Object.keys(pageDescriptions)
+          .sort((a, b) => b.length - a.length)
+          .find(p => currentPage.startsWith(p));
+        if (basePage) {
+          pageContext = `\nThe owner is currently viewing ${pageDescriptions[basePage]}. Tailor your response to what they're likely looking at if relevant.`;
+        }
+      }
 
-    const contextBlock = recentContext
-      ? `\n\nRecent conversations:\n${recentContext}\n\nUse this context naturally like a colleague who remembers — don't say "from our previous conversation".`
-      : '';
+      // Load recent conversation summaries + business patterns in parallel
+      const [recentContext, patterns] = await Promise.all([
+        this.memory.getRecentContext(companyId, userId),
+        this.getOwnerPatterns(companyId),
+      ]);
 
-    const patternBlock = patterns
-      ? `\n\nOwner's business patterns (use to catch anomalies and suggest next steps — don't quote these numbers unless asked):
+      const contextBlock = recentContext
+        ? `\n\nRecent conversations:\n${recentContext}\n\nUse this context naturally like a colleague who remembers — don't say "from our previous conversation".`
+        : '';
+
+      const patternBlock = patterns
+        ? `\n\nOwner's business patterns (use to catch anomalies and suggest next steps — don't quote these numbers unless asked):
 - Avg quote value: £${patterns.avgQuotePounds}
 - Avg invoice value: £${patterns.avgInvoicePounds}
 - Common job types: ${patterns.commonJobTypes}
 - Top customers (by revenue): ${patterns.topCustomers}`
-      : '';
+        : '';
 
-    const systemPrompt = `You are Pip, a helpful AI assistant for Vantro — a job management app for UK plumbing and heating firms.
+      systemPrompt = `You are Pip, a helpful AI assistant for Vantro — a job management app for UK plumbing and heating firms.
 
 ${timeContext}${pageContext}
 
@@ -177,6 +191,9 @@ Extraordinary capabilities:
 
 4. Pricing intelligence: when asked about win rates or pricing, give specific numbers from their own data — average accepted vs rejected prices, sweet spot range, trend direction. Be specific and honest, including when there isn't enough data ("I need at least 3 resolved quotes to give you useful data").${patternBlock}${contextBlock}`;
 
+      activeTools = this.tools.getToolDefinitions();
+    }
+
     const systemMessage: AiMessage = { role: 'system', content: systemPrompt };
     const historyMessages: AiMessage[] = history.slice(-20).map(m => ({
       role: m.role as Role,
@@ -213,7 +230,7 @@ Extraordinary capabilities:
             content: JSON.stringify(result),
             tool_call_id: fakeToolCallId,
           },
-        ]);
+        ], activeTools);
 
         return {
           response: followUp.content ?? 'Done!',
@@ -224,7 +241,7 @@ Extraordinary capabilities:
 
       // Normal flow — ask the model what to do
       const messages: AiMessage[] = [systemMessage, ...historyMessages, userMessage];
-      const response = await this.callModel(messages);
+      const response = await this.callModel(messages, activeTools);
 
       if (response.tool_calls && response.tool_calls.length > 0) {
         const toolCall = response.tool_calls[0];
@@ -253,6 +270,27 @@ Extraordinary capabilities:
 
         const result = await this.tools.execute(companyId, userId, toolName, toolArgs);
 
+        // technical_reference returns answer_from_knowledge — answer directly from AI knowledge
+        if (
+          typeof result === 'object' &&
+          result !== null &&
+          !Array.isArray(result) &&
+          (result as Record<string, unknown>).action === 'answer_from_knowledge'
+        ) {
+          const question = (result as Record<string, unknown>).question as string;
+          const techAnswer = await this.callModel([
+            {
+              role: 'system',
+              content: `You are a knowledgeable UK plumbing and heating technical assistant. Answer accurately using British standards, Gas Safe regulations, and Building Regulations. Always add at the end: "⚠️ Verify critical safety figures against manufacturer documentation and current regulations." Keep answers concise and practical.`,
+            },
+            { role: 'user', content: question },
+          ]);
+          return {
+            response: techAnswer.content ?? "Sorry, I couldn't find an answer to that.",
+            toolUsed: 'technical_reference',
+          };
+        }
+
         const followUp = await this.callModel([
           ...messages,
           {
@@ -265,7 +303,7 @@ Extraordinary capabilities:
             content: JSON.stringify(result),
             tool_call_id: toolCall.id,
           },
-        ]);
+        ], activeTools);
 
         return {
           response: followUp.content ?? 'Done!',
@@ -287,7 +325,8 @@ Extraordinary capabilities:
     }
   }
 
-  private async callModel(messages: AiMessage[]): Promise<ModelResponse> {
+  private async callModel(messages: AiMessage[], tools?: unknown[]): Promise<ModelResponse> {
+    const toolsToUse = tools ?? this.tools.getToolDefinitions();
     const res = await fetch(`${AI_API_URL}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -297,8 +336,7 @@ Extraordinary capabilities:
       body: JSON.stringify({
         model: AI_MODEL,
         messages,
-        tools: this.tools.getToolDefinitions(),
-        tool_choice: 'auto',
+        ...(toolsToUse.length > 0 ? { tools: toolsToUse, tool_choice: 'auto' } : {}),
         max_tokens: 4096,
         temperature: 0.3,
       }),
@@ -381,6 +419,50 @@ Rules:
     const raw = data.choices?.[0]?.message?.content?.trim() ?? text;
     const cleaned = raw.replace(/^["']|["']$/g, '');
     return { result: cleaned };
+  }
+
+  private getEngineerPrompt(today: string, timeContext: string): string {
+    return `You are Pip, a smart on-site assistant for field engineers at a UK plumbing and heating firm using Vantro.
+
+Today: ${today}
+${timeContext}
+
+You're an on-site companion — brief, practical, helpful. Engineers are busy with dirty hands checking their phone between jobs.
+
+Your personality:
+- SHORT answers — one or two sentences unless detail is asked for
+- Technical and knowledgeable — you know plumbing, heating, gas safety, Building Regs
+- Proactive — suggest what they might need next
+- British English, industry terminology
+
+Your capabilities:
+- Show today's jobs and upcoming schedule with customer address and phone
+- Show job details including customer access notes
+- Show what was done at an address before (previous visits, gas cert history)
+- Check if a job is ready to mark complete (photos, notes, timesheet, gas cert)
+- Log materials/parts used on a job (for the owner to bill)
+- Add timestamped notes to a job
+- Notify the office if you're running late
+- Answer plumbing/heating/gas safety technical questions
+- Provide job-specific safety checklists
+- Suggest what photos to take
+- Show your hours logged today or this week
+- Give an end-of-day summary (jobs done, hours, any forgotten timers)
+
+Smart behaviours:
+- Always show the customer's phone number alongside address so they can tap to call
+- If a customer has any access notes, mention them upfront
+- When checking job completion, be specific: "Missing: photos, completion notes"
+- After logging materials, suggest common extras: "Did you also use any PTFE tape or compression fittings?"
+- After end of day, remind about active timers and missing info
+
+You CANNOT access — and must NEVER attempt:
+- Financial data (prices, invoices, quotes, revenue, costs)
+- CIS or subcontractor information
+- Other engineers' jobs or timesheets
+- Company settings or admin features
+
+When answering technical questions, always add a brief disclaimer to verify against manufacturer documentation.`;
   }
 
   private isRiskyAction(toolName: string): boolean {
