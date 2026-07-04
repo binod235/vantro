@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -9,6 +10,7 @@ import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { RecurringJobsService } from '../recurring-jobs/recurring-jobs.service';
 import { JobNotificationsService } from './job-notifications.service';
+import { InvoicesService } from '../invoices/invoices.service';
 
 const JOB_INCLUDE = {
   customer: { select: { id: true, name: true, email: true, phone: true } },
@@ -18,10 +20,13 @@ const JOB_INCLUDE = {
 
 @Injectable()
 export class JobsService {
+  private readonly logger = new Logger(JobsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly recurringJobsService: RecurringJobsService,
     private readonly jobNotificationsService: JobNotificationsService,
+    private readonly invoicesService: InvoicesService,
   ) {}
 
   async create(dto: CreateJobDto, companyId: string) {
@@ -99,6 +104,9 @@ export class JobsService {
 
     if (dto.status === 'COMPLETED') {
       void this.recurringJobsService.handleJobCompleted(id);
+      if (existing.status !== 'COMPLETED') {
+        void this.autoChainOnComplete(id, companyId);
+      }
     }
 
     if (dto.engineer_id && dto.engineer_id !== existing.engineer_id) {
@@ -183,6 +191,75 @@ export class JobsService {
       where: { id: engineerId, companyId },
     });
     if (!engineer) throw new NotFoundException('Engineer not found');
+  }
+
+  private async autoChainOnComplete(jobId: string, companyId: string): Promise<void> {
+    try {
+      const job = await this.prisma.client.job.findUnique({
+        where: { id: jobId },
+        include: {
+          customer: { select: { id: true, name: true, email: true } },
+          invoices: {
+            where: { status: { not: 'CANCELLED' } },
+            select: { id: true },
+          },
+        },
+      });
+
+      if (!job) return;
+
+      const acceptedQuote = await this.prisma.client.quote.findFirst({
+        where: { job_id: jobId, company_id: companyId, status: 'ACCEPTED' },
+        select: { id: true, total_pence: true, quote_number: true },
+      });
+
+      if (!acceptedQuote || job.invoices.length > 0) return;
+
+      const results: string[] = [];
+
+      try {
+        const invoice = await this.invoicesService.createFromQuote(
+          companyId,
+          acceptedQuote.id,
+          { mode: 'ENTIRE_QUOTE' },
+        );
+        results.push(`Invoice ${invoice.invoice_number} created for £${(invoice.total_pence / 100).toFixed(2)}`);
+
+        if (job.customer?.email) {
+          try {
+            await this.invoicesService.emailInvoice(companyId, invoice.id);
+            results.push(`Emailed to ${job.customer.email}`);
+          } catch {
+            results.push('Invoice created — email failed, send manually');
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`Auto-invoice failed for job ${jobId}: ${String(err)}`);
+        return;
+      }
+
+      if (results.length > 0) {
+        const owner = await this.prisma.client.user.findFirst({
+          where: { companyId: companyId, role: 'OWNER' },
+          select: { id: true },
+        });
+
+        if (owner) {
+          await this.prisma.client.todo.create({
+            data: {
+              company_id: companyId,
+              created_by_id: owner.id,
+              title: `✅ Job complete: ${job.title}${job.customer ? ` — ${job.customer.name}` : ''}`,
+              description: results.join('\n'),
+              priority: 'LOW',
+              status: 'OPEN',
+            },
+          });
+        }
+      }
+    } catch (err) {
+      this.logger.error(`Auto-chain failed for job ${jobId}: ${String(err)}`);
+    }
   }
 }
 

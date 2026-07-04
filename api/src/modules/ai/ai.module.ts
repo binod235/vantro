@@ -4,6 +4,7 @@ import { AiService } from './ai.service';
 import { AiToolsService } from './ai-tools.service';
 import { PipInsightsService } from './pip-insights.service';
 import { PipMemoryService } from './pip-memory.service';
+import { PipDashboardService } from './pip-dashboard.service';
 import { JobsModule } from '../jobs/jobs.module';
 import { CustomersModule } from '../customers/customers.module';
 import { QuotesModule } from '../quotes/quotes.module';
@@ -23,6 +24,6 @@ import { StorageModule } from '../../storage/storage.module';
     StorageModule,
   ],
   controllers: [AiController],
-  providers: [AiService, AiToolsService, PipInsightsService, PipMemoryService],
+  providers: [AiService, AiToolsService, PipInsightsService, PipMemoryService, PipDashboardService],
 })
 export class AiModule {}

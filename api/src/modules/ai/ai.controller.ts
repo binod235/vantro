@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import { AiService } from './ai.service';
 import { PipInsightsService } from './pip-insights.service';
 import { PipMemoryService } from './pip-memory.service';
+import { PipDashboardService } from './pip-dashboard.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 
@@ -81,7 +82,14 @@ export class AiController {
     private readonly ai: AiService,
     private readonly pipInsights: PipInsightsService,
     private readonly memory: PipMemoryService,
+    private readonly dashboard: PipDashboardService,
   ) {}
+
+  @Get('dashboard')
+  @Roles('OWNER')
+  getDashboard(@CurrentUser() user: { companyId: string }) {
+    return this.dashboard.getDashboardData(user.companyId!);
+  }
 
   @Post('chat')
   chat(
