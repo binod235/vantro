@@ -9,6 +9,7 @@ import { CisEngineService } from '../subcontractors/cis-engine.service';
 import { RemindersService } from '../reminders/reminders.service';
 import { StorageService } from '../../storage/storage.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PipDashboardService } from './pip-dashboard.service';
 import { buildBusinessReportHtml } from './ai-report.pdf';
 import type { CreateJobDto } from '../jobs/dto/create-job.dto';
 import type { CreateCustomerDto } from '../customers/dto/create-customer.dto';
@@ -54,6 +55,7 @@ export class AiToolsService {
     private readonly reminders: RemindersService,
     private readonly storage: StorageService,
     private readonly prisma: PrismaService,
+    private readonly pipDashboard: PipDashboardService,
   ) {}
 
   getToolDefinitions(): ToolDefinition[] {
@@ -587,6 +589,17 @@ Do NOT use prepare_form for:
           },
         },
       },
+      {
+        type: 'function',
+        function: {
+          name: 'explain_health_score',
+          description: 'Explain the business health score in detail — what it means, what factors are helping, what is hurting it, and how to improve it. Use when the user asks about the health score, "why is my score X", "how do I improve my score", or "what is my business health".',
+          parameters: {
+            type: 'object',
+            properties: {},
+          },
+        },
+      },
     ];
   }
 
@@ -712,6 +725,7 @@ Do NOT use prepare_form for:
       case 'create_reminder':              return this.executeCreateReminder(companyId, _userId, a);
       case 'list_reminders':               return this.executeListReminders(companyId, a);
       case 'complete_reminder':            return this.executeCompleteReminder(companyId, a);
+      case 'explain_health_score':         return this.executeExplainHealthScore(companyId);
 
       // Engineer tools
       case 'get_my_todays_jobs':       return this.executeGetMyTodaysJobs(companyId, _userId);
@@ -2650,6 +2664,42 @@ Do NOT use prepare_form for:
       message: `Done! Marked "${todos[0].title}" as completed.`,
       reminder_id: todos[0].id,
       title: todos[0].title,
+    };
+  }
+
+  private async executeExplainHealthScore(companyId: string): Promise<ToolResult> {
+    const hs = await this.pipDashboard.getHealthScoreForTool(companyId);
+
+    const earningLines = hs.earning.length > 0
+      ? hs.earning.map(e => `  ${e.icon} ${e.label} (+${e.points} pts)`).join('\n')
+      : '  None right now';
+
+    const losingLines = hs.losing.length > 0
+      ? hs.losing.map(l => `  ${l.icon} ${l.label} (-${l.points} pts) → Fix: ${l.fix_label}`).join('\n')
+      : '  Nothing holding you back!';
+
+    const trendText =
+      hs.trend.direction === 'up' ? `▲ Up ${hs.trend.change} points from last week` :
+      hs.trend.direction === 'down' ? `▼ Down ${hs.trend.change} points from last week` :
+      '─ Stable vs last week';
+
+    return {
+      score: hs.score,
+      label: hs.label,
+      trend: trendText,
+      earning_total: hs.earning.reduce((s, e) => s + e.points, 0),
+      losing_total: hs.losing.reduce((s, l) => s + l.points, 0),
+      summary: [
+        `Your business health score is ${hs.score}/100 — ${hs.label}. ${trendText}.`,
+        '',
+        `EARNING (+${hs.earning.reduce((s, e) => s + e.points, 0)} pts):`,
+        earningLines,
+        '',
+        `COSTING (-${hs.losing.reduce((s, l) => s + l.points, 0)} pts):`,
+        losingLines,
+        '',
+        `PATH TO ${hs.path_to_100.potential_score}: ${hs.path_to_100.note}`,
+      ].join('\n'),
     };
   }
 
