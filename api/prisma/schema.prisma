@@ -1316,11 +1316,3 @@ model PipConversation {
   @@index([company_id, user_id, created_at])
 }
 
-model HealthScoreSnapshot {
-  id         String   @id @default(cuid())
-  company_id String
-  score      Int
-  date       DateTime @default(now())
-
-  @@index([company_id, date])
-}
