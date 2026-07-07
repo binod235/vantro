@@ -372,20 +372,24 @@ model Company {
   jsr_default_terms    String?
   pipInsights          PipInsight[]
   pipConversations     PipConversation[]
+  chasePolicy          ChasePolicy?
+  chaseActivities      ChaseActivity[]
 }
 
 model Customer {
-  id            String   @id @default(cuid())
-  company_id    String
-  name          String
-  email         String?
-  phone         String?
-  address_line1 String?
-  address_line2 String?
-  city          String?
-  postcode      String?
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  company_id      String
+  name            String
+  email           String?
+  phone           String?
+  address_line1   String?
+  address_line2   String?
+  city            String?
+  postcode        String?
+  is_business     Boolean  @default(false)  // statutory interest applies to B2B only
+  chase_excluded  Boolean  @default(false)  // opt this customer out of auto-chase
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
   company           Company                @relation(fields: [company_id], references: [id])
   jobs              Job[]
@@ -398,6 +402,7 @@ model Customer {
   recurringJobs     RecurringJob[]
   communicationLogs CommunicationLog[]
   serviceReports    JobServiceReport[]
+  chaseActivities   ChaseActivity[]
 }
 
 model Job {
@@ -527,6 +532,7 @@ model Invoice {
   payment_reported_method  String?
   payment_reported_note    String?
   payment_review_status    String?
+  chase_paused             Boolean            @default(false)  // owner can pause auto-chase per invoice
   created_at               DateTime           @default(now())
   updated_at               DateTime           @updatedAt
 
@@ -535,9 +541,10 @@ model Invoice {
   job              Job?              @relation(fields: [job_id], references: [id])
   quote            Quote?            @relation(fields: [quote_id], references: [id])
   recurringInvoice RecurringInvoice? @relation(fields: [recurring_invoice_id], references: [id], onDelete: SetNull)
-  payments    InvoicePayment[]
-  job_stage   JobStage?
-  creditNotes CreditNote[]
+  payments      InvoicePayment[]
+  job_stage     JobStage?
+  creditNotes   CreditNote[]
+  chaseActivities ChaseActivity[]
 
   @@unique([company_id, invoice_number])
   @@index([company_id])
@@ -1314,5 +1321,49 @@ model PipConversation {
   created_at    DateTime  @default(now())
 
   @@index([company_id, user_id, created_at])
+}
+
+// ─── Auto-Chase Engine ───────────────────────────────────────────────────────
+
+model ChasePolicy {
+  id         String   @id @default(cuid())
+  company_id String   @unique
+  company    Company  @relation(fields: [company_id], references: [id])
+
+  enabled    Boolean  @default(false)   // master switch — OFF by default
+
+  // Escalation steps (days after invoice due_date)
+  gentle_days Int     @default(3)       // friendly nudge
+  firm_days   Int     @default(10)      // firmer reminder
+  final_days  Int     @default(21)      // final notice
+
+  // Statutory interest (Late Payment of Commercial Debts Act 1998)
+  interest_enabled  Boolean @default(false)
+  interest_rate_pct Float   @default(12.5)  // BoE base ~4.5% + 8%
+
+  send_hour  Int      @default(9)        // UK hour to send (7–18)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model ChaseActivity {
+  id         String   @id @default(cuid())
+  company_id String
+  company    Company  @relation(fields: [company_id], references: [id])
+  invoice_id String
+  invoice    Invoice  @relation(fields: [invoice_id], references: [id])
+  customer_id String?
+  customer   Customer? @relation(fields: [customer_id], references: [id])
+
+  stage           String   // GENTLE | FIRM | FINAL
+  sent_to         String   // email address
+  interest_pounds Float?   // interest amount quoted, if any
+  status          String   @default("SENT") // SENT | FAILED
+
+  created_at DateTime @default(now())
+
+  @@index([company_id, created_at])
+  @@index([invoice_id])
 }
 
