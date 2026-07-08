@@ -600,6 +600,15 @@ export class InvoicesService {
     });
   }
 
+  async toggleChasePaused(companyId: string, invoiceId: string) {
+    const invoice = await this.getOne(companyId, invoiceId);
+    return this.prisma.client.invoice.update({
+      where: { id: invoiceId },
+      data:  { chase_paused: !invoice.chase_paused },
+      include: INVOICE_INCLUDE,
+    });
+  }
+
   // ── Delete ─────────────────────────────────────────────────────────────────
 
   async remove(companyId: string, invoiceId: string) {

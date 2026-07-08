@@ -327,9 +327,26 @@ export class RecurringInvoicesService {
 
     this.logger.log(`Generated invoice ${invoice.invoice_number} from recurring template "${ri.title}" (${ri.id})`);
 
+    void this.prisma.client.autopilotEvent.create({
+      data: {
+        company_id: ri.company_id,
+        type: 'RECURRING_GENERATED',
+        title: `Auto-generated ${invoice.invoice_number} from "${ri.title}" · £${(invoice.total_pence / 100).toFixed(2)}`,
+        meta: { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number, recurringId: ri.id },
+      },
+    }).catch(() => {});
+
     if (ri.auto_email) {
       try {
         await this.invoicesService.emailInvoice(ri.company_id, invoice.id);
+        void this.prisma.client.autopilotEvent.create({
+          data: {
+            company_id: ri.company_id,
+            type: 'INVOICE_AUTO_EMAILED',
+            title: `Invoice ${invoice.invoice_number} auto-emailed (recurring)`,
+            meta: { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number },
+          },
+        }).catch(() => {});
       } catch (err) {
         this.logger.warn(`Auto-email failed for recurring invoice ${ri.id}: ${String(err)}`);
       }

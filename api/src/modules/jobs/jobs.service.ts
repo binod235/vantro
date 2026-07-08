@@ -225,10 +225,27 @@ export class JobsService {
         );
         results.push(`Invoice ${invoice.invoice_number} created for £${(invoice.total_pence / 100).toFixed(2)}`);
 
+        void this.prisma.client.autopilotEvent.create({
+          data: {
+            company_id: companyId,
+            type: 'INVOICE_AUTO_CREATED',
+            title: `Auto-invoiced ${job.customer?.name ?? 'customer'} — ${invoice.invoice_number} · £${(invoice.total_pence / 100).toFixed(2)}`,
+            meta: { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number, jobId, jobTitle: job.title },
+          },
+        }).catch(() => {});
+
         if (job.customer?.email) {
           try {
             await this.invoicesService.emailInvoice(companyId, invoice.id);
             results.push(`Emailed to ${job.customer.email}`);
+            void this.prisma.client.autopilotEvent.create({
+              data: {
+                company_id: companyId,
+                type: 'INVOICE_AUTO_EMAILED',
+                title: `Invoice ${invoice.invoice_number} emailed to ${job.customer.email}`,
+                meta: { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number },
+              },
+            }).catch(() => {});
           } catch {
             results.push('Invoice created — email failed, send manually');
           }

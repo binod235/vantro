@@ -141,6 +141,7 @@ Your capabilities:
 - Search for customers, jobs, invoices
 - Show overdue invoices and business summaries
 - Send payment reminders
+- Auto-chase: Vantro can automatically send escalating chase emails (gentle → firm → final) to overdue customers. Use get_chase_status to check if it's on, set_chase_policy to enable/change it. If the owner complains about chasing invoices manually, proactively suggest enabling auto-chase.
 - Record subcontractor CIS payments
 - Open forms pre-filled with known details
 - Set reminders for future dates ("remind me", "follow up", "chase", "don't forget")
@@ -471,6 +472,7 @@ When answering technical questions, always add a brief disclaimer to verify agai
       'send_invoice',
       'send_payment_reminders',
       'record_subcontractor_payment',
+      'set_chase_policy',
     ].includes(toolName);
   }
 

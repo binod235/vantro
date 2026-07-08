@@ -1367,3 +1367,18 @@ model ChaseActivity {
   @@index([invoice_id])
 }
 
+// ─── Autopilot Event Log ─────────────────────────────────────────────────────
+// Append-only log of every autonomous action Vantro took on behalf of a company.
+// Written fire-and-forget — a failed write must never break the primary action.
+
+model AutopilotEvent {
+  id         String   @id @default(cuid())
+  company_id String
+  type       String   // CHASE_SENT | INVOICE_AUTO_CREATED | INVOICE_AUTO_EMAILED | RECURRING_GENERATED
+  title      String   // human-readable line shown in the dashboard feed
+  meta       Json?    // optional context (invoice id, number, stage, etc.)
+  created_at DateTime @default(now())
+
+  @@index([company_id, created_at])
+}
+

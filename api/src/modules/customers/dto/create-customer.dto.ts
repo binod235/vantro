@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsNotEmpty,
   IsOptional,
@@ -37,4 +38,12 @@ export class CreateCustomerDto {
     message: 'postcode must be a valid UK postcode',
   })
   postcode?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_business?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  chase_excluded?: boolean;
 }

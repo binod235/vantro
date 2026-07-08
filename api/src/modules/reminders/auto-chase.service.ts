@@ -285,6 +285,16 @@ export class AutoChaseService {
       },
     });
 
+    // Autopilot feed — fire-and-forget, must not break the primary action
+    void this.prisma.client.autopilotEvent.create({
+      data: {
+        company_id: company.id,
+        type: 'CHASE_SENT',
+        title: `Chased ${customer.name} — ${invoice.invoice_number} (${stage.toLowerCase()} reminder, ${daysOverdue}d overdue)`,
+        meta: { stage, invoiceId: invoice.id, invoiceNumber: invoice.invoice_number, daysOverdue },
+      },
+    }).catch(() => {});
+
     void this.comms.log({
       company_id: company.id,
       customer_id: customer.id,

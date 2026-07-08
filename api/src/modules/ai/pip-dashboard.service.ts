@@ -34,6 +34,8 @@ export class PipDashboardService {
       cisData,
       recentActivity,
       companyData,
+      autopilotEvents,
+      chasePolicy,
     ] = await Promise.all([
       // 1. Overdue invoices (past due_date, still unpaid/part-paid)
       this.prisma.client.invoice.findMany({
@@ -156,6 +158,19 @@ export class PipDashboardService {
         where: { id: companyId },
         select: { name: true },
       }),
+
+      // 18. Autopilot events this week (for feed card)
+      this.prisma.client.autopilotEvent.findMany({
+        where: { company_id: companyId, created_at: { gte: weekStart } },
+        orderBy: { created_at: 'desc' },
+        take: 20,
+      }),
+
+      // 19. Chase policy — enabled flag for empty-state CTA
+      this.prisma.client.chasePolicy.findUnique({
+        where: { company_id: companyId },
+        select: { enabled: true },
+      }),
     ]);
 
     const thisMonthPence  = paidThisMonth._sum.total_pence ?? 0;
@@ -257,6 +272,17 @@ export class PipDashboardService {
 
       cis:            cisData,
       recentActivity,
+
+      autopilot: {
+        weekCount:    autopilotEvents.length,
+        items:        autopilotEvents.slice(0, 8).map(e => ({
+          id:         e.id,
+          type:       e.type,
+          title:      e.title,
+          created_at: e.created_at.toISOString(),
+        })),
+        chaseEnabled: chasePolicy?.enabled ?? false,
+      },
     };
   }
 

@@ -200,4 +200,13 @@ export class InvoicesController {
   ) {
     return this.invoicesService.toggleReminders(user.companyId!, id);
   }
+
+  // ── PATCH /invoices/:id/toggle-chase ──────────────────────────────────────
+  @Patch(':id/toggle-chase')
+  toggleChase(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id') id: string,
+  ) {
+    return this.invoicesService.toggleChasePaused(user.companyId!, id);
+  }
 }

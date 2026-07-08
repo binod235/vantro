@@ -7,6 +7,7 @@ import { SubcontractorsService } from '../subcontractors/subcontractors.service'
 import { SubcontractorPaymentsService } from '../subcontractors/subcontractor-payments.service';
 import { CisEngineService } from '../subcontractors/cis-engine.service';
 import { RemindersService } from '../reminders/reminders.service';
+import { AutoChaseService } from '../reminders/auto-chase.service';
 import { StorageService } from '../../storage/storage.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { buildBusinessReportHtml } from './ai-report.pdf';
@@ -52,6 +53,7 @@ export class AiToolsService {
     private readonly subPayments: SubcontractorPaymentsService,
     private readonly cisEngine: CisEngineService,
     private readonly reminders: RemindersService,
+    private readonly autoChase: AutoChaseService,
     private readonly storage: StorageService,
     private readonly prisma: PrismaService,
   ) {}
@@ -587,6 +589,33 @@ Do NOT use prepare_form for:
           },
         },
       },
+
+      // ── AUTO-CHASE ────────────────────────────────────────────────────────────
+      {
+        type: 'function',
+        function: {
+          name: 'get_chase_status',
+          description: `Find out if auto-chase is enabled and what it's been doing. Use when the user asks "is auto-chase on", "has Vantro been chasing invoices", "what's auto-chase done lately", "any chases sent", "has anyone been chased", or complains about overdue invoices and auto-chase might be the solution.`,
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'set_chase_policy',
+          description: `Enable or disable auto-chase, or change when chases are sent. Use when the user says "turn on auto-chase", "enable auto-chasing", "stop chasing invoices automatically", "change the chase days", or similar. Always confirm with the user before making changes — this affects what customers receive.`,
+          parameters: {
+            type: 'object',
+            properties: {
+              enabled: { type: 'boolean', description: 'Enable or disable auto-chase' },
+              gentle_days: { type: 'number', description: 'Days overdue before first gentle reminder (default 3)' },
+              firm_days: { type: 'number', description: 'Days overdue before firm reminder (default 10)' },
+              final_days: { type: 'number', description: 'Days overdue before final notice (default 21)' },
+              _confirmed: { type: 'boolean', description: 'Internal confirmation flag' },
+            },
+          },
+        },
+      },
     ];
   }
 
@@ -656,6 +685,17 @@ Do NOT use prepare_form for:
         };
       }
 
+      case 'set_chase_policy': {
+        const changes: string[] = [];
+        if (args.enabled !== undefined) changes.push(`${args.enabled ? 'enable' : 'disable'} auto-chase`);
+        if (args.gentle_days !== undefined) changes.push(`set gentle reminder to ${args.gentle_days as number} days overdue`);
+        if (args.firm_days !== undefined) changes.push(`set firm reminder to ${args.firm_days as number} days overdue`);
+        if (args.final_days !== undefined) changes.push(`set final notice to ${args.final_days as number} days overdue`);
+        return {
+          message: `I'll ${changes.join(', ')}. This controls what your customers receive automatically. Shall I go ahead?`,
+        };
+      }
+
       default:
         return { message: 'Shall I go ahead?' };
     }
@@ -712,6 +752,9 @@ Do NOT use prepare_form for:
       case 'create_reminder':              return this.executeCreateReminder(companyId, _userId, a);
       case 'list_reminders':               return this.executeListReminders(companyId, a);
       case 'complete_reminder':            return this.executeCompleteReminder(companyId, a);
+      // Auto-chase tools
+      case 'get_chase_status':             return this.executeGetChaseStatus(companyId);
+      case 'set_chase_policy':             return this.executeSetChasePolicy(companyId, a);
       // Engineer tools
       case 'get_my_todays_jobs':       return this.executeGetMyTodaysJobs(companyId, _userId);
       case 'get_my_next_job':          return this.executeGetMyNextJob(companyId, _userId);
@@ -732,6 +775,93 @@ Do NOT use prepare_form for:
       default:
         return { error: true, message: `Unknown tool: ${toolName}` };
     }
+  }
+
+  // ── Auto-Chase tool implementations ────────────────────────────────────────
+
+  private async executeGetChaseStatus(companyId: string): Promise<ToolResult> {
+    const { policy, recentActivity, recoveredCount } =
+      await this.autoChase.getChaseStatus(companyId);
+
+    if (!policy) {
+      return {
+        enabled: false,
+        message: 'Auto-chase has not been configured yet. Go to Settings → Auto-Chase to enable it.',
+      };
+    }
+
+    const gbp = (p: number) =>
+      new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(p / 100);
+
+    const activitySummary = recentActivity.map((a) => ({
+      stage: a.stage,
+      invoice: (a.invoice as { invoice_number: string }).invoice_number,
+      customer: (a.customer as { name: string } | null)?.name ?? 'Unknown',
+      amount: gbp((a.invoice as { amount_due_pence: number }).amount_due_pence),
+      sentAt: new Date(a.created_at).toLocaleDateString('en-GB'),
+    }));
+
+    return {
+      enabled: policy.enabled,
+      schedule: {
+        gentle_days: policy.gentle_days,
+        firm_days: policy.firm_days,
+        final_days: policy.final_days,
+        send_hour: `${policy.send_hour}:00`,
+        interest_enabled: policy.interest_enabled,
+        interest_rate_pct: policy.interest_rate_pct,
+      },
+      last_14_days: activitySummary,
+      recovered_invoices_paid_after_chase: recoveredCount,
+      message: policy.enabled
+        ? `Auto-chase is ON. Chases go out at ${policy.send_hour}:00 — gentle at ${policy.gentle_days} days, firm at ${policy.firm_days} days, final at ${policy.final_days} days.`
+        : 'Auto-chase is currently OFF. Enable it in Settings → Auto-Chase.',
+    };
+  }
+
+  private async executeSetChasePolicy(
+    companyId: string,
+    args: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    if (!args._confirmed) {
+      const changes: string[] = [];
+      if (args.enabled !== undefined) changes.push(`${args.enabled ? 'enable' : 'disable'} auto-chase`);
+      if (args.gentle_days !== undefined) changes.push(`set gentle reminder to ${args.gentle_days} days`);
+      if (args.firm_days !== undefined) changes.push(`set firm reminder to ${args.firm_days} days`);
+      if (args.final_days !== undefined) changes.push(`set final notice to ${args.final_days} days`);
+      return {
+        _requires_confirmation: true,
+        message: `I'll ${changes.join(', ')}. This affects what your customers receive automatically. Shall I go ahead?`,
+      };
+    }
+
+    const policy = await this.prisma.client.chasePolicy.upsert({
+      where: { company_id: companyId },
+      create: {
+        company_id: companyId,
+        ...(args.enabled !== undefined && { enabled: args.enabled as boolean }),
+        ...(args.gentle_days !== undefined && { gentle_days: args.gentle_days as number }),
+        ...(args.firm_days !== undefined && { firm_days: args.firm_days as number }),
+        ...(args.final_days !== undefined && { final_days: args.final_days as number }),
+      },
+      update: {
+        ...(args.enabled !== undefined && { enabled: args.enabled as boolean }),
+        ...(args.gentle_days !== undefined && { gentle_days: args.gentle_days as number }),
+        ...(args.firm_days !== undefined && { firm_days: args.firm_days as number }),
+        ...(args.final_days !== undefined && { final_days: args.final_days as number }),
+      },
+    });
+
+    return {
+      success: true,
+      policy: {
+        enabled: policy.enabled,
+        gentle_days: policy.gentle_days,
+        firm_days: policy.firm_days,
+        final_days: policy.final_days,
+      },
+      message: `Done! Auto-chase is now ${policy.enabled ? 'ON' : 'OFF'}${policy.enabled ? ` — gentle at ${policy.gentle_days}d, firm at ${policy.firm_days}d, final at ${policy.final_days}d.` : '.'}`,
+    };
   }
 
   getEngineerToolDefinitions() {
