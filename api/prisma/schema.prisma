@@ -313,6 +313,10 @@ model Company {
   appointment_reminder_hours    Int     @default(24)
   appointment_reminder_message  String?
 
+  // Accountant pack
+  accountant_email      String?
+  accountant_pack_auto  Boolean @default(false)
+
   // HMRC OAuth tokens
   hmrc_access_token          String?
   hmrc_refresh_token         String?

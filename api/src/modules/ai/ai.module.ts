@@ -12,6 +12,7 @@ import { InvoicesModule } from '../invoices/invoices.module';
 import { SubcontractorsModule } from '../subcontractors/subcontractors.module';
 import { RemindersModule } from '../reminders/reminders.module';
 import { StorageModule } from '../../storage/storage.module';
+import { ExportsModule } from '../exports/exports.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { StorageModule } from '../../storage/storage.module';
     SubcontractorsModule,
     RemindersModule,
     StorageModule,
+    ExportsModule,
   ],
   controllers: [AiController],
   providers: [AiService, AiToolsService, PipInsightsService, PipMemoryService, PipDashboardService],

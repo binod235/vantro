@@ -91,4 +91,8 @@ export class UpdateSettingsDto {
   @IsOptional() @IsBoolean() appointment_reminders_enabled?: boolean;
   @IsOptional() @IsInt() @Min(1) @Max(72) appointment_reminder_hours?: number;
   @IsOptional() @IsString() appointment_reminder_message?: string;
+
+  // Accountant pack
+  @IsOptional() @IsString() @MaxLength(254) accountant_email?: string;
+  @IsOptional() @IsBoolean() accountant_pack_auto?: boolean;
 }

@@ -8,6 +8,7 @@ import { SubcontractorPaymentsService } from '../subcontractors/subcontractor-pa
 import { CisEngineService } from '../subcontractors/cis-engine.service';
 import { RemindersService } from '../reminders/reminders.service';
 import { AutoChaseService } from '../reminders/auto-chase.service';
+import { AccountantPackService } from '../exports/accountant-pack.service';
 import { StorageService } from '../../storage/storage.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { buildBusinessReportHtml } from './ai-report.pdf';
@@ -54,6 +55,7 @@ export class AiToolsService {
     private readonly cisEngine: CisEngineService,
     private readonly reminders: RemindersService,
     private readonly autoChase: AutoChaseService,
+    private readonly accountantPack: AccountantPackService,
     private readonly storage: StorageService,
     private readonly prisma: PrismaService,
   ) {}
@@ -616,6 +618,21 @@ Do NOT use prepare_form for:
           },
         },
       },
+      {
+        type: 'function',
+        function: {
+          name: 'generate_accountant_pack',
+          description: `Generate the monthly accountant pack (invoices CSV, payments CSV, purchase orders CSV, CIS statements PDF, summary PDF) for a given month and optionally email it to the accountant. Use when the user says "send the accountant pack", "email my accountant", "generate last month's pack", "send financials to my accountant", or similar.`,
+          parameters: {
+            type: 'object',
+            properties: {
+              month: { type: 'string', description: 'Month in YYYY-MM format. Defaults to last month if not specified.' },
+              send_email: { type: 'boolean', description: 'If true, email the pack to the configured accountant email. Requires confirmation.' },
+              _confirmed: { type: 'boolean', description: 'Internal confirmation flag for email sending' },
+            },
+          },
+        },
+      },
     ];
   }
 
@@ -696,6 +713,15 @@ Do NOT use prepare_form for:
         };
       }
 
+      case 'generate_accountant_pack': {
+        const month = (args.month as string | undefined) ?? this.prevMonth();
+        const d = new Date(month + '-01');
+        const label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+        return {
+          message: `I'll generate the accountant pack for ${label} (invoices, payments, purchase orders, CIS statements, summary PDF) and email it to your accountant. Shall I go ahead?`,
+        };
+      }
+
       default:
         return { message: 'Shall I go ahead?' };
     }
@@ -755,6 +781,7 @@ Do NOT use prepare_form for:
       // Auto-chase tools
       case 'get_chase_status':             return this.executeGetChaseStatus(companyId);
       case 'set_chase_policy':             return this.executeSetChasePolicy(companyId, a);
+      case 'generate_accountant_pack':     return this.executeGenerateAccountantPack(companyId, a);
       // Engineer tools
       case 'get_my_todays_jobs':       return this.executeGetMyTodaysJobs(companyId, _userId);
       case 'get_my_next_job':          return this.executeGetMyNextJob(companyId, _userId);
@@ -4033,6 +4060,48 @@ ${signature}`,
       job_type: label,
       photo_list: guidance,
       tip: 'Take photos in good light. Make sure model labels and cert numbers are readable. Photos protect you if there are any disputes later.',
+    };
+  }
+
+  private prevMonth(): string {
+    const d = new Date();
+    const prev = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+    return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  private async executeGenerateAccountantPack(
+    companyId: string,
+    args: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const month      = (args.month as string | undefined) ?? this.prevMonth();
+    const sendEmail  = args.send_email === true;
+
+    if (sendEmail && !args._confirmed) {
+      const d = new Date(month + '-01');
+      const label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      return {
+        _requires_confirmation: true,
+        message: `I'll generate the accountant pack for ${label} and email it to your accountant. Shall I go ahead?`,
+      };
+    }
+
+    const d = new Date(month + '-01');
+    const label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+    if (sendEmail) {
+      const result = await this.accountantPack.emailToAccountant(companyId, month);
+      return {
+        message: `Done — I've sent the ${label} accountant pack to ${result.recipient}. It includes invoices, payments, purchase orders, CIS statements, and a summary PDF.`,
+        recipient: result.recipient,
+        month,
+      };
+    }
+
+    const { url } = await this.accountantPack.generate(companyId, month);
+    return {
+      message: `The ${label} accountant pack is ready. [Download it here](${url}) — it includes invoices CSV, payments CSV, purchase orders CSV, CIS statements (if applicable), and a summary PDF.`,
+      url,
+      month,
     };
   }
 }

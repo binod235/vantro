@@ -257,7 +257,7 @@ Extraordinary capabilities:
         this.logger.log(`Pip tool: ${toolName}(${JSON.stringify(toolArgs)})`);
 
         // Risky actions need confirmation before executing
-        if (this.isRiskyAction(toolName)) {
+        if (this.isRiskyAction(toolName, toolArgs)) {
           const preview = await this.tools.preview(companyId, toolName, toolArgs);
           return {
             response: preview.message,
@@ -466,7 +466,10 @@ You CANNOT access — and must NEVER attempt:
 When answering technical questions, always add a brief disclaimer to verify against manufacturer documentation.`;
   }
 
-  private isRiskyAction(toolName: string): boolean {
+  private isRiskyAction(toolName: string, args?: Record<string, unknown>): boolean {
+    if (toolName === 'generate_accountant_pack') {
+      return args?.send_email === true;
+    }
     return [
       'create_invoice_from_quote',
       'send_invoice',
