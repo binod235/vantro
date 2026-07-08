@@ -208,6 +208,7 @@ function buildModern(inv: any, co: any, accent: string, logoSrc: string | null, 
   <div style="font-size:11px;color:#bbb;text-align:center;">
     ${[co.name, co.address_line1, co.postcode, co.phone, co.website, co.vat_registered && co.vat_number ? `VAT: ${co.vat_number}` : null].filter(Boolean).join(' &middot; ')}
   </div>
+  ${co.branding_footer_enabled !== false ? '<div style="margin-top:4px;font-size:7pt;color:#ddd;text-align:center;">Sent with <a href="https://vantro.co.uk" style="color:#ddd;text-decoration:none;">Vantro</a></div>' : ''}
 </div>
 
 </body></html>`;
@@ -303,6 +304,7 @@ function buildClassic(inv: any, co: any, accent: string, logoSrc: string | null,
   <div style="font-size:11px;color:#999;text-align:center;">
     ${[co.name, co.address_line1, co.postcode, co.phone, co.vat_registered && co.vat_number ? `VAT: ${co.vat_number}` : null].filter(Boolean).join(' &middot; ')}
   </div>
+  ${co.branding_footer_enabled !== false ? '<div style="margin-top:4px;font-size:7pt;color:#ddd;text-align:center;">Sent with <a href="https://vantro.co.uk" style="color:#ddd;text-decoration:none;">Vantro</a></div>' : ''}
 </div>
 
 </body></html>`;
@@ -398,6 +400,7 @@ function buildMinimal(inv: any, co: any, accent: string, logoSrc: string | null,
   <div style="font-size:11px;color:#ccc;text-align:center;">
     ${[co.name, co.address_line1, co.postcode, co.phone, co.vat_registered && co.vat_number ? `VAT: ${co.vat_number}` : null].filter(Boolean).join(' &middot; ')}
   </div>
+  ${co.branding_footer_enabled !== false ? '<div style="margin-top:4px;font-size:7pt;color:#ddd;text-align:center;">Sent with <a href="https://vantro.co.uk" style="color:#ddd;text-decoration:none;">Vantro</a></div>' : ''}
 </div>
 
 </body></html>`;

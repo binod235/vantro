@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Resend } from 'resend';
-import archiver = require('archiver');
+import AdmZip from 'adm-zip';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { CisEngineService } from '../subcontractors/cis-engine.service';
@@ -38,18 +38,12 @@ function buildCsv(headers: string[], rows: (string | number | null | undefined)[
 
 // ── ZIP helper ────────────────────────────────────────────────────────────────
 
-function createZipBuffer(files: Array<{ name: string; data: Buffer }>): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    const zip = archiver('zip', { zlib: { level: 6 } });
-    zip.on('data', (chunk: Buffer) => chunks.push(chunk));
-    zip.on('end', () => resolve(Buffer.concat(chunks)));
-    zip.on('error', reject);
-    for (const { name, data } of files) {
-      zip.append(data, { name });
-    }
-    void zip.finalize();
-  });
+function createZipBuffer(files: Array<{ name: string; data: Buffer }>): Buffer {
+  const zip = new AdmZip();
+  for (const { name, data } of files) {
+    zip.addFile(name, data);
+  }
+  return zip.toBuffer();
 }
 
 // ── Puppeteer PDF ─────────────────────────────────────────────────────────────
@@ -268,7 +262,7 @@ export class AccountantPackService {
     files.push({ name: 'summary.pdf', data: summaryBuf });
 
     // 6. Zip and upload
-    const zipBuf = await createZipBuffer(files);
+    const zipBuf = createZipBuffer(files);
     const key    = `exports/accountant-pack-${companyId}-${month}.zip`;
     const url    = await this.storage.uploadFile(zipBuf, key, 'application/zip');
 

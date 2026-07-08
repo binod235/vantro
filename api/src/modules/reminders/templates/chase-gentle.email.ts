@@ -1,3 +1,5 @@
+import { emailBrandingFooter } from '../../../common/branding-footer';
+
 export function chaseGentleHtml(data: {
   customerName: string;
   companyName: string;
@@ -7,6 +9,7 @@ export function chaseGentleHtml(data: {
   dueDateStr: string;
   paymentLink: string;
   logoUrl: string | null;
+  brandingFooterEnabled?: boolean;
 }): string {
   const gbp = (p: number) =>
     new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(p / 100);
@@ -53,10 +56,7 @@ export function chaseGentleHtml(data: {
           <strong>${data.companyName}</strong><br>
           <a href="mailto:${data.companyEmail}" style="color:#1d4ed8;">${data.companyEmail}</a>
         </p>
-        <hr style="border:none;border-top:1px solid #f0f0f0;margin:24px 0;" />
-        <p style="margin:0;font-size:11px;color:#aaa;text-align:center;">
-          Sent on behalf of ${data.companyName} by <a href="https://vantro.co.uk" style="color:#aaa;">Vantro</a>
-        </p>
+        ${emailBrandingFooter(data.brandingFooterEnabled ?? true)}
       </div>
     </div>
   `;

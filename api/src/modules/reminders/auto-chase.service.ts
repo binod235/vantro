@@ -44,6 +44,7 @@ export class AutoChaseService {
             id: true,
             name: true,
             logo_url: true,
+            branding_footer_enabled: true,
           },
         },
       },
@@ -64,7 +65,7 @@ export class AutoChaseService {
     const policy = await this.prisma.client.chasePolicy.findUnique({
       where: { company_id: companyId },
       include: {
-        company: { select: { id: true, name: true, logo_url: true } },
+        company: { select: { id: true, name: true, logo_url: true, branding_footer_enabled: true } },
       },
     });
 
@@ -80,7 +81,7 @@ export class AutoChaseService {
   private async processCompany(policy: {
     id: string;
     company_id: string;
-    company: { id: string; name: string; logo_url: string | null };
+    company: { id: string; name: string; logo_url: string | null; branding_footer_enabled: boolean };
     gentle_days: number;
     firm_days: number;
     final_days: number;
@@ -196,7 +197,7 @@ export class AutoChaseService {
       email: string | null;
       is_business: boolean;
     };
-    company: { id: string; name: string; logo_url: string | null };
+    company: { id: string; name: string; logo_url: string | null; branding_footer_enabled: boolean };
     daysOverdue: number;
     dueDateStr: string;
     policy: {
@@ -230,6 +231,7 @@ export class AutoChaseService {
       dueDateStr,
       paymentLink,
       logoUrl: company.logo_url,
+      brandingFooterEnabled: company.branding_footer_enabled,
     };
 
     let subject: string;

@@ -463,6 +463,7 @@ export class QuotesService {
           </a>
           <p style="color:#999;font-size:12px;margin-top:16px;">Or copy this link: ${acceptanceUrl}</p>
           <img src="${trackingPixel}" width="1" height="1" style="display:none;" alt="" />
+          ${company.branding_footer_enabled !== false ? '<hr style="border:none;border-top:1px solid #f0f0f0;margin:20px 0 12px;" /><p style="margin:0;font-size:11px;color:#bbb;text-align:center;">Sent with <a href="https://vantro.co.uk" style="color:#bbb;text-decoration:none;">Vantro</a></p>' : ''}
         </div>
       `,
       ...(pdfBuffer

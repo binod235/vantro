@@ -60,6 +60,12 @@ export class CompaniesController {
     return this.companiesService.findForUser(user.id);
   }
 
+  @Get('me/onboarding')
+  @Roles('OWNER')
+  getOnboarding(@CurrentUser() user: CurrentUserType) {
+    return this.companiesService.getOnboardingStatus(user.companyId!);
+  }
+
   @Get('public/:slug')
   @Public()
   getPublic(@Param('slug') slug: string) {

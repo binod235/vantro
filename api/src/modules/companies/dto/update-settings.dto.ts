@@ -95,4 +95,10 @@ export class UpdateSettingsDto {
   // Accountant pack
   @IsOptional() @IsString() @MaxLength(254) accountant_email?: string;
   @IsOptional() @IsBoolean() accountant_pack_auto?: boolean;
+
+  // Branding footer
+  @IsOptional() @IsBoolean() branding_footer_enabled?: boolean;
+
+  // Onboarding
+  @IsOptional() @IsBoolean() onboarding_dismissed?: boolean;
 }

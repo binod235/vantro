@@ -1,3 +1,5 @@
+import { emailBrandingFooter } from '../../../common/branding-footer';
+
 export function chaseFinalHtml(data: {
   customerName: string;
   companyName: string;
@@ -12,6 +14,7 @@ export function chaseFinalHtml(data: {
   isBusiness: boolean;
   interestRatePct: number;
   interestPounds: number | null;
+  brandingFooterEnabled?: boolean;
 }): string {
   const gbp = (p: number) =>
     new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(p / 100);
@@ -86,10 +89,7 @@ export function chaseFinalHtml(data: {
           <strong>${data.companyName}</strong><br>
           <a href="mailto:${data.companyEmail}" style="color:#dc2626;">${data.companyEmail}</a>
         </p>
-        <hr style="border:none;border-top:1px solid #f0f0f0;margin:24px 0;" />
-        <p style="margin:0;font-size:11px;color:#aaa;text-align:center;">
-          Sent on behalf of ${data.companyName} by <a href="https://vantro.co.uk" style="color:#aaa;">Vantro</a>
-        </p>
+        ${emailBrandingFooter(data.brandingFooterEnabled ?? true)}
       </div>
     </div>
   `;

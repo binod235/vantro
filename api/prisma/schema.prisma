@@ -317,6 +317,13 @@ model Company {
   accountant_email      String?
   accountant_pack_auto  Boolean @default(false)
 
+  // Branding footer
+  branding_footer_enabled Boolean @default(true)
+
+  // Onboarding
+  onboarding_dismissed Boolean @default(false)
+  first_import_done    Boolean @default(false)
+
   // HMRC OAuth tokens
   hmrc_access_token          String?
   hmrc_refresh_token         String?
@@ -390,6 +397,7 @@ model Customer {
   address_line2   String?
   city            String?
   postcode        String?
+  notes           String?
   is_business     Boolean  @default(false)  // statutory interest applies to B2B only
   chase_excluded  Boolean  @default(false)  // opt this customer out of auto-chase
   created_at      DateTime @default(now())

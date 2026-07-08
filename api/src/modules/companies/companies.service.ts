@@ -218,4 +218,74 @@ export class CompaniesService {
       data: { name: dto.name },
     });
   }
+
+  // ── Onboarding checklist status ─────────────────────────────────────────────
+
+  async getOnboardingStatus(companyId: string) {
+    const [company, customerCount, quoteCount, chasePolicy] = await Promise.all([
+      this.prisma.client.company.findUnique({
+        where: { id: companyId },
+        select: {
+          logo_url: true, name: true, phone: true,
+          onboarding_dismissed: true, first_import_done: true,
+        },
+      }),
+      this.prisma.client.customer.count({ where: { company_id: companyId } }),
+      this.prisma.client.quote.count({ where: { company_id: companyId } }),
+      this.prisma.client.chasePolicy.findUnique({
+        where: { company_id: companyId },
+        select: { enabled: true },
+      }),
+    ]);
+
+    if (!company) throw new NotFoundException('Company not found');
+
+    const steps = [
+      {
+        id: 'company_details',
+        label: 'Add company details & logo',
+        done: !!(company.logo_url && company.name && company.phone),
+        href: '/dashboard/settings?tab=profile',
+        cta: 'Go to Settings',
+      },
+      {
+        id: 'first_customer',
+        label: 'Add your first customer',
+        done: customerCount >= 1,
+        href: '/dashboard/customers',
+        cta: 'Add a customer',
+      },
+      {
+        id: 'import_customers',
+        label: 'Import customers from a CSV',
+        done: company.first_import_done || customerCount >= 5,
+        href: '/dashboard/settings?tab=import',
+        cta: 'Import CSV',
+      },
+      {
+        id: 'first_quote',
+        label: 'Send your first quote',
+        done: quoteCount >= 1,
+        href: '/dashboard/quotes',
+        cta: 'Create a quote',
+      },
+      {
+        id: 'auto_chase',
+        label: 'Turn on Auto-Chase',
+        done: chasePolicy?.enabled === true,
+        href: '/dashboard/settings?tab=chase',
+        cta: 'Set up Auto-Chase',
+      },
+    ];
+
+    const completedCount = steps.filter(s => s.done).length;
+
+    return {
+      dismissed: company.onboarding_dismissed,
+      completedCount,
+      totalCount: steps.length,
+      allDone: completedCount === steps.length,
+      steps,
+    };
+  }
 }

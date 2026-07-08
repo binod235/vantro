@@ -878,6 +878,7 @@ export class InvoicesService {
                ${bankSection}
                <p style="font-size:13px;color:#6b7280;">${company.default_payment_terms ?? 'Payment due within 30 days'}</p>
                <img src="${trackingUrl}" width="1" height="1" style="display:none" alt="" />
+               ${company.branding_footer_enabled !== false ? '<hr style="border:none;border-top:1px solid #f0f0f0;margin:20px 0 12px;" /><p style="margin:0;font-size:11px;color:#bbb;text-align:center;">Sent with <a href="https://vantro.co.uk" style="color:#bbb;text-decoration:none;">Vantro</a></p>' : ''}
              </div>`,
       ...(pdfBuffer
         ? {
