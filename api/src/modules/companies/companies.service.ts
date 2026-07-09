@@ -273,7 +273,7 @@ export class CompaniesService {
         id: 'auto_chase',
         label: 'Turn on Auto-Chase',
         done: chasePolicy?.enabled === true,
-        href: '/dashboard/settings?tab=chase',
+        href: '/dashboard/settings?tab=reminders',
         cta: 'Set up Auto-Chase',
       },
     ];

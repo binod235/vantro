@@ -132,19 +132,19 @@ export class PipDashboardService {
         _sum: { duration_minutes: true },
       }),
 
-      // 13. Overdue todos (max 4 for dashboard)
+      // 13. Overdue todos (max 6 for dashboard sticky notes)
       this.prisma.client.todo.findMany({
         where: { company_id: companyId, status: 'OPEN', due_date: { lt: todayStart } },
         orderBy: { due_date: 'asc' },
         select: { id: true, title: true, due_date: true, priority: true },
-        take: 4,
+        take: 6,
       }),
 
-      // 14. Todos due today (max 4 for dashboard)
+      // 14. Todos due today (max 6 for dashboard sticky notes)
       this.prisma.client.todo.findMany({
         where: { company_id: companyId, status: 'OPEN', due_date: { gte: todayStart, lt: todayEnd } },
         select: { id: true, title: true, priority: true },
-        take: 4,
+        take: 6,
       }),
 
       // 15. CIS compliance data
@@ -180,7 +180,7 @@ export class PipDashboardService {
       ? Math.round((acceptedQuotes / (acceptedQuotes + rejectedQuotes)) * 100)
       : null;
 
-    const actions = this.buildActions(overdueInvoices, unbilledJobs, cisData, overdueTodos, pendingQuotes);
+    const actions = this.buildActions(overdueInvoices, unbilledJobs, cisData, pendingQuotes);
 
     const overdueTotal    = overdueInvoices.reduce((s, i) => s + i.amount_due_pence, 0);
     const unbilledTotal   = unbilledJobs.reduce((s, j) => s + (j.quotes[0]?.total_pence ?? 0), 0);
@@ -292,7 +292,6 @@ export class PipDashboardService {
     overdueInvoices: Array<{ customer: { name: string } | null; amount_due_pence: number }>,
     unbilledJobs: Array<{ quotes: Array<{ total_pence: number }> }>,
     cisData: { submitted: boolean; daysUntilDeadline: number } | null,
-    overdueTodos: Array<{ title: string }>,
     pendingQuotes: Array<{ customer: { name: string } | null; updated_at: Date; total_pence: number }>,
   ) {
     type Action = {
@@ -375,21 +374,6 @@ export class PipDashboardService {
           amount: total / 100,
         });
       }
-    }
-
-    if (overdueTodos.length > 0) {
-      actions.push({
-        priority: 40,
-        icon: '📌',
-        category: 'Follow-ups',
-        title: `${overdueTodos.length} overdue reminder${overdueTodos.length > 1 ? 's' : ''}`,
-        detail: overdueTodos[0].title,
-        action_label: 'View todos',
-        action_type: 'navigate',
-        action_data: { url: '/dashboard/todos' },
-        severity: 'info',
-        amount: null,
-      });
     }
 
     return actions.sort((a, b) => b.priority - a.priority);
