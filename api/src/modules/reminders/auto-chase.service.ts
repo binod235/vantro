@@ -6,6 +6,7 @@ import { CommsService } from '../comms/comms.service';
 import { chaseGentleHtml } from './templates/chase-gentle.email';
 import { chaseFirmHtml } from './templates/chase-firm.email';
 import { chaseFinalHtml } from './templates/chase-final.email';
+import { generateQrDataUri } from '../../common/qr.helper';
 
 type ChaseStage = 'GENTLE' | 'FIRM' | 'FINAL';
 
@@ -222,6 +223,8 @@ export class AutoChaseService {
       ? `${frontendUrl}/invoice/${invoice.payment_token}`
       : `${frontendUrl}/dashboard/invoices`;
 
+    const qrDataUri = invoice.payment_token ? await generateQrDataUri(paymentLink) : null;
+
     const commonData = {
       customerName: customer.name,
       companyName: company.name,
@@ -232,6 +235,7 @@ export class AutoChaseService {
       paymentLink,
       logoUrl: company.logo_url,
       brandingFooterEnabled: company.branding_footer_enabled,
+      qrDataUri,
     };
 
     let subject: string;

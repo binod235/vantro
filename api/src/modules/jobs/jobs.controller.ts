@@ -20,6 +20,7 @@ import { JobsService } from './jobs.service';
 import { JobPhotosService } from './job-photos.service';
 import { JobStagesService } from './job-stages.service';
 import { JobTemplatesService } from './job-templates.service';
+import { OnMyWayService } from './on-my-way.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -33,6 +34,7 @@ export class JobsController {
     private readonly jobPhotosService:     JobPhotosService,
     private readonly jobStagesService:     JobStagesService,
     private readonly jobTemplatesService:  JobTemplatesService,
+    private readonly onMyWayService:       OnMyWayService,
   ) {}
 
   /** Owner creates a new job and assigns it to a customer. */
@@ -155,6 +157,13 @@ export class JobsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
     return this.jobsService.remove(id, user.companyId!);
+  }
+
+  // ── On My Way ──────────────────────────────────────────────────────────────
+
+  @Post(':id/on-my-way')
+  sendOnMyWay(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
+    return this.onMyWayService.send(id, user.companyId!, user.id);
   }
 
   // ── Photos ─────────────────────────────────────────────────────────────────

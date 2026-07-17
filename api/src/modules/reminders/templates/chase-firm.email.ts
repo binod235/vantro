@@ -11,6 +11,7 @@ export function chaseFirmHtml(data: {
   paymentLink: string;
   logoUrl: string | null;
   brandingFooterEnabled?: boolean;
+  qrDataUri?: string | null;
 }): string {
   const gbp = (p: number) =>
     new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(p / 100);
@@ -39,6 +40,7 @@ export function chaseFirmHtml(data: {
           style="display:inline-block;background:#d97706;color:white;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:15px;margin-bottom:24px;">
           Pay Now &rarr;
         </a>
+        ${data.qrDataUri ? `<div style="margin:16px 0;text-align:center;"><img src="${data.qrDataUri}" width="100" height="100" alt="Scan to pay" style="display:inline-block;" /><p style="margin:4px 0 0;font-size:11px;color:#9ca3af;">Scan to pay</p></div>` : ''}
         <table style="width:100%;border-collapse:collapse;background:#fffbeb;border-radius:8px;margin-bottom:24px;border:1px solid #fde68a;">
           <tr>
             <td style="padding:10px 16px;font-size:13px;color:#888;">Invoice</td>

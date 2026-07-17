@@ -101,4 +101,9 @@ export class UpdateSettingsDto {
 
   // Onboarding
   @IsOptional() @IsBoolean() onboarding_dismissed?: boolean;
+
+  // Automations
+  @IsOptional() @IsString() @MaxLength(500) google_review_url?: string | null;
+  @IsOptional() @IsBoolean() review_requests_enabled?: boolean;
+  @IsOptional() @IsBoolean() customer_notifications_enabled?: boolean;
 }

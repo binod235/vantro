@@ -320,6 +320,13 @@ model Company {
   // Branding footer
   branding_footer_enabled Boolean @default(true)
 
+  // Automations — F4 Review requests
+  google_review_url        String?
+  review_requests_enabled  Boolean @default(false)
+
+  // Automations — F5 On My Way customer notifications
+  customer_notifications_enabled Boolean @default(true)
+
   // Onboarding
   onboarding_dismissed Boolean @default(false)
   first_import_done    Boolean @default(false)
@@ -385,6 +392,10 @@ model Company {
   pipConversations     PipConversation[]
   chasePolicy          ChasePolicy?
   chaseActivities      ChaseActivity[]
+  quoteChasePolicy     QuoteChasePolicy?
+  quoteChaseActivities QuoteChaseActivity[]
+  renewalPolicy        RenewalPolicy?
+  renewalReminders     RenewalReminder[]
 }
 
 model Customer {
@@ -411,10 +422,12 @@ model Customer {
   recurringInvoices RecurringInvoice[]
   gasCertificates   GasSafetyCertificate[]
   enquiries         Enquiry[]
-  recurringJobs     RecurringJob[]
-  communicationLogs CommunicationLog[]
-  serviceReports    JobServiceReport[]
-  chaseActivities   ChaseActivity[]
+  recurringJobs        RecurringJob[]
+  communicationLogs    CommunicationLog[]
+  serviceReports       JobServiceReport[]
+  chaseActivities      ChaseActivity[]
+  quoteChaseActivities QuoteChaseActivity[]
+  renewalReminders     RenewalReminder[]
 }
 
 model Job {
@@ -429,9 +442,10 @@ model Job {
   duration_minutes Int?
   schedule_note    String?
   notes            String?
-  recurring_job_id String?
-  reminder_sent_at DateTime?
-  created_at       DateTime  @default(now())
+  recurring_job_id   String?
+  reminder_sent_at   DateTime?
+  on_my_way_sent_at  DateTime?
+  created_at         DateTime  @default(now())
   updated_at       DateTime  @updatedAt
 
   company               Company                @relation(fields: [company_id], references: [id])
@@ -486,13 +500,16 @@ model Quote {
   viewed_at    DateTime?
   view_count   Int       @default(0)
 
+  chase_paused Boolean @default(false)
+
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 
-  company   Company   @relation(fields: [company_id], references: [id])
-  customer  Customer? @relation(fields: [customer_id], references: [id])
-  job       Job?      @relation(fields: [job_id], references: [id])
-  invoices  Invoice[]
+  company              Company              @relation(fields: [company_id], references: [id])
+  customer             Customer?            @relation(fields: [customer_id], references: [id])
+  job                  Job?                 @relation(fields: [job_id], references: [id])
+  invoices             Invoice[]
+  quoteChaseActivities QuoteChaseActivity[]
 
   @@unique([company_id, quote_number])
   @@index([company_id])
@@ -545,6 +562,8 @@ model Invoice {
   payment_reported_note    String?
   payment_review_status    String?
   chase_paused             Boolean            @default(false)  // owner can pause auto-chase per invoice
+  review_request_sent      Boolean            @default(false)
+  review_request_sent_at   DateTime?
   created_at               DateTime           @default(now())
   updated_at               DateTime           @updatedAt
 
@@ -850,10 +869,11 @@ model GasSafetyCertificate {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  company  Company   @relation(fields: [company_id], references: [id])
-  job      Job?      @relation(fields: [job_id], references: [id])
-  customer Customer? @relation(fields: [customer_id], references: [id])
-  engineer User?     @relation(fields: [engineer_id], references: [id])
+  company          Company           @relation(fields: [company_id], references: [id])
+  job              Job?              @relation(fields: [job_id], references: [id])
+  customer         Customer?         @relation(fields: [customer_id], references: [id])
+  engineer         User?             @relation(fields: [engineer_id], references: [id])
+  renewalReminders RenewalReminder[]
 
   @@unique([company_id, cert_number])
   @@index([company_id])
@@ -1394,3 +1414,76 @@ model AutopilotEvent {
   @@index([company_id, created_at])
 }
 
+
+// ─── Quote Auto-Chase ──────────────────────────────────────────────────────────
+
+model QuoteChasePolicy {
+  id         String  @id @default(cuid())
+  company_id String  @unique
+  company    Company @relation(fields: [company_id], references: [id])
+
+  enabled     Boolean @default(false)
+
+  // Days after quote last_sent_at
+  first_days  Int     @default(3)
+  second_days Int     @default(7)
+  final_days  Int     @default(14)
+
+  send_hour   Int     @default(9)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model QuoteChaseActivity {
+  id          String    @id @default(cuid())
+  company_id  String
+  company     Company   @relation(fields: [company_id], references: [id])
+  quote_id    String
+  quote       Quote     @relation(fields: [quote_id], references: [id])
+  customer_id String?
+  customer    Customer? @relation(fields: [customer_id], references: [id])
+
+  stage   String // FIRST | SECOND | FINAL
+  sent_to String
+  status  String @default("SENT")
+
+  created_at DateTime @default(now())
+
+  @@index([company_id, created_at])
+  @@index([quote_id])
+}
+
+// ─── Service Renewal Autopilot ─────────────────────────────────────────────────
+
+model RenewalPolicy {
+  id         String  @id @default(cuid())
+  company_id String  @unique
+  company    Company @relation(fields: [company_id], references: [id])
+
+  enabled     Boolean @default(false)
+  days_before Int     @default(30)
+  create_todo Boolean @default(true)
+  send_hour   Int     @default(9)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model RenewalReminder {
+  id             String               @id @default(cuid())
+  company_id     String
+  company        Company              @relation(fields: [company_id], references: [id])
+  certificate_id String
+  certificate    GasSafetyCertificate @relation(fields: [certificate_id], references: [id])
+  customer_id    String?
+  customer       Customer?            @relation(fields: [customer_id], references: [id])
+
+  sent_to String
+  status  String @default("SENT")
+
+  created_at DateTime @default(now())
+
+  @@index([company_id, created_at])
+  @@index([certificate_id])
+}

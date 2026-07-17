@@ -14,6 +14,8 @@ import type { UpdateInvoiceDto } from './dto/update-invoice.dto';
 import type { CreateInvoiceFromQuoteDto } from './dto/create-invoice-from-quote.dto';
 import type { AddInvoicePaymentDto } from './dto/add-invoice-payment.dto';
 import type { MarkPaidDto } from './dto/mark-paid.dto';
+import { ReviewRequestService } from '../reminders/review-request.service';
+import { generateQrDataUri } from '../../common/qr.helper';
 
 // ─── Line item types ──────────────────────────────────────────────────────────
 
@@ -101,6 +103,7 @@ export class InvoicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly comms: CommsService,
+    private readonly reviewRequest: ReviewRequestService,
   ) {}
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -525,6 +528,8 @@ export class InvoicesService {
       data:  { status: 'PAID' },
     });
 
+    void this.reviewRequest.sendAfterPayment(invoiceId, companyId);
+
     return result;
   }
 
@@ -861,6 +866,14 @@ export class InvoicesService {
            <a href="${payLink}" style="font-size:13px;color:#6b7280;">View invoice online</a>
          </div>`;
 
+    const qrDataUri = canPayOnline ? await generateQrDataUri(payLink) : null;
+    const qrSection = qrDataUri
+      ? `<div style="margin:24px 0;text-align:center;">
+           <img src="${qrDataUri}" width="120" height="120" alt="Scan to pay" style="display:inline-block;" />
+           <p style="margin:6px 0 0;font-size:11px;color:#9ca3af;">Scan to pay online</p>
+         </div>`
+      : '';
+
     const resend = new Resend(resendKey);
     const { error: emailError } = await resend.emails.send({
       from: process.env.FROM_EMAIL ?? 'noreply@vantro.co.uk',
@@ -875,6 +888,7 @@ export class InvoicesService {
                  ${invoice.due_date ? `<tr><td style="padding:6px 0;font-size:14px;color:#6b7280;">Due date</td><td style="padding:6px 0;font-size:14px;text-align:right;">${new Date(invoice.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</td></tr>` : ''}
                </table>
                ${payNowSection}
+               ${qrSection}
                ${bankSection}
                <p style="font-size:13px;color:#6b7280;">${company.default_payment_terms ?? 'Payment due within 30 days'}</p>
                <img src="${trackingUrl}" width="1" height="1" style="display:none" alt="" />
