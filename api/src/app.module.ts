@@ -32,6 +32,7 @@ import { SubcontractorsModule } from './modules/subcontractors/subcontractors.mo
 import { HmrcModule }           from './modules/hmrc/hmrc.module';
 import { AiModule }             from './modules/ai/ai.module';
 import { ExportsModule }        from './modules/exports/exports.module';
+import { AppliancesModule }     from './modules/appliances/appliances.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { ExportsModule }        from './modules/exports/exports.module';
     HmrcModule,
     AiModule,
     ExportsModule,
+    AppliancesModule,
   ],
 })
 export class AppModule {}

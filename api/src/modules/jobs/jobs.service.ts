@@ -11,6 +11,7 @@ import { UpdateJobDto } from './dto/update-job.dto';
 import { RecurringJobsService } from '../recurring-jobs/recurring-jobs.service';
 import { JobNotificationsService } from './job-notifications.service';
 import { InvoicesService } from '../invoices/invoices.service';
+import { AppliancesService } from '../appliances/appliances.service';
 
 const JOB_INCLUDE = {
   customer: { select: { id: true, name: true, email: true, phone: true } },
@@ -27,6 +28,7 @@ export class JobsService {
     private readonly recurringJobsService: RecurringJobsService,
     private readonly jobNotificationsService: JobNotificationsService,
     private readonly invoicesService: InvoicesService,
+    private readonly appliancesService: AppliancesService,
   ) {}
 
   async create(dto: CreateJobDto, companyId: string) {
@@ -106,6 +108,9 @@ export class JobsService {
       void this.recurringJobsService.handleJobCompleted(id);
       if (existing.status !== 'COMPLETED') {
         void this.autoChainOnComplete(id, companyId);
+        if (updated.appliance_id) {
+          void this.safeUpdateApplianceServiceDates(updated.appliance_id);
+        }
       }
     }
 
@@ -191,6 +196,14 @@ export class JobsService {
       where: { id: engineerId, companyId },
     });
     if (!engineer) throw new NotFoundException('Engineer not found');
+  }
+
+  private async safeUpdateApplianceServiceDates(applianceId: string): Promise<void> {
+    try {
+      await this.appliancesService.updateServiceDates(applianceId, new Date());
+    } catch (err) {
+      this.logger.warn(`Appliance service date update failed for ${applianceId}: ${String(err)}`);
+    }
   }
 
   private async autoChainOnComplete(jobId: string, companyId: string): Promise<void> {

@@ -122,6 +122,69 @@ export class RenewalAutopilotService {
       }
     }
 
+    // Also check appliances with next_service_due on the target date
+    // Dedupe: skip if we already sent a renewal reminder for the same customer in the same calendar month
+    const appliances = await this.prisma.client.appliance.findMany({
+      where: {
+        company_id: policy.company_id,
+        archived: false,
+        next_service_due: {
+          gte: targetDate,
+          lt: new Date(targetDate.getTime() + 24 * 60 * 60 * 1000),
+        },
+        customer: { email: { not: null } },
+      },
+      include: {
+        customer: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    const targetYearMonth = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
+
+    for (const appliance of appliances) {
+      try {
+        if (!appliance.customer?.email || !appliance.next_service_due) continue;
+
+        // Dedupe: skip if already reminded for this appliance or this customer this month via cert
+        const alreadySentThisMonth = await this.prisma.client.renewalReminder.findFirst({
+          where: {
+            company_id: policy.company_id,
+            OR: [
+              { appliance_id: appliance.id },
+              {
+                customer_id: appliance.customer_id,
+                created_at: {
+                  gte: new Date(`${targetYearMonth}-01`),
+                  lt: new Date(
+                    targetDate.getMonth() === 11
+                      ? `${targetDate.getFullYear() + 1}-01-01`
+                      : `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 2).padStart(2, '0')}-01`,
+                  ),
+                },
+              },
+            ],
+          },
+        });
+
+        if (alreadySentThisMonth) {
+          this.logger.log(`Renewal autopilot: skipping appliance ${appliance.id} — already reminded ${appliance.customer.name} this month`);
+          continue;
+        }
+
+        await this.sendApplianceRenewalEmail({
+          appliance,
+          customer: appliance.customer,
+          company: policy.company,
+          daysUntilDue: policy.days_before,
+          createTodo: policy.create_todo,
+        });
+
+        sent++;
+      } catch (err) {
+        this.logger.error(`Renewal autopilot (appliance) failed for ${appliance.id}: ${String(err)}`);
+      }
+    }
+
     this.logger.log(
       `Renewal autopilot: ${policy.company.name} — ${certs.length} eligible, ${sent} sent`,
     );
@@ -238,4 +301,110 @@ export class RenewalAutopilotService {
       notes: `Auto renewal reminder — ${daysUntilExpiry} days before expiry`,
     });
   }
+
+  private async sendApplianceRenewalEmail(ctx: {
+    appliance: {
+      id: string;
+      type: string;
+      make: string | null;
+      model: string | null;
+      location: string | null;
+      next_service_due: Date | null;
+      customer_id: string;
+    };
+    customer: { id: string; name: string; email: string | null };
+    company: {
+      id: string;
+      name: string;
+      logo_url: string | null;
+      phone: string | null;
+      branding_footer_enabled: boolean;
+    };
+    daysUntilDue: number;
+    createTodo: boolean;
+  }): Promise<void> {
+    const resendKey = process.env.RESEND_API_KEY;
+    if (!resendKey) return;
+
+    const { appliance, customer, company, daysUntilDue, createTodo } = ctx;
+    const toEmail = customer.email!;
+
+    const owner = await this.prisma.client.user.findFirst({
+      where: { companyId: company.id, role: 'OWNER' },
+      select: { id: true, email: true },
+    });
+    const companyEmail = owner?.email ?? (process.env.FROM_EMAIL ?? 'noreply@vantro.co.uk');
+
+    const applianceLabel = [appliance.make, appliance.model].filter(Boolean).join(' ') || appliance.type;
+    const dueDateStr = appliance.next_service_due
+      ? new Date(appliance.next_service_due).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
+      : '';
+    const locationNote = appliance.location ? ` (${appliance.location})` : '';
+
+    const subject = `Your ${applianceLabel} service is due — ${dueDateStr}`;
+    const html = serviceRenewalHtml({
+      customerName: customer.name,
+      companyName: company.name,
+      companyEmail,
+      companyPhone: company.phone ?? undefined,
+      propertyAddress: `your ${applianceLabel}${locationNote}`,
+      certNumber: '',
+      expiryDateStr: dueDateStr,
+      daysUntilExpiry: daysUntilDue,
+      logoUrl: company.logo_url,
+      brandingFooterEnabled: company.branding_footer_enabled,
+    });
+
+    const resend = new Resend(resendKey);
+    const { error } = await resend.emails.send({
+      from: process.env.FROM_EMAIL ?? 'noreply@vantro.co.uk',
+      to: toEmail,
+      replyTo: companyEmail,
+      subject,
+      html,
+    });
+
+    if (error) throw new Error(error.message);
+
+    await this.prisma.client.renewalReminder.create({
+      data: {
+        company_id: company.id,
+        appliance_id: appliance.id,
+        customer_id: customer.id,
+        sent_to: toEmail,
+        status: 'SENT',
+      },
+    });
+
+    if (createTodo && owner) {
+      void this.prisma.client.todo.create({
+        data: {
+          company_id: company.id,
+          created_by_id: owner.id,
+          title: `Book service for ${customer.name}'s ${applianceLabel}${locationNote} — due ${dueDateStr}`,
+          priority: daysUntilDue <= 14 ? 'URGENT' : 'HIGH',
+          due_date: appliance.next_service_due ?? undefined,
+        },
+      }).catch(() => {});
+    }
+
+    void this.prisma.client.autopilotEvent.create({
+      data: {
+        company_id: company.id,
+        type: 'RENEWAL_SENT',
+        title: `Service reminder sent to ${customer.name} for ${applianceLabel} (due ${dueDateStr})`,
+        meta: { applianceId: appliance.id, daysUntilDue },
+      },
+    }).catch(() => {});
+
+    void this.comms.log({
+      company_id: company.id,
+      customer_id: customer.id,
+      type: 'APPLIANCE_SERVICE_REMINDER',
+      subject,
+      to_email: toEmail,
+      notes: `Auto appliance service reminder — ${daysUntilDue} days before due date`,
+    });
+  }
+
 }

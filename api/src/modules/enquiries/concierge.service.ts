@@ -71,6 +71,15 @@ interface ModelMessage {
   tool_call_id?: string;
 }
 
+interface ApplianceContext {
+  applianceLabel: string;
+  location: string | null;
+  customerName: string;
+  customerPhone: string | null;
+  postcode: string | null;
+  address: string | null;
+}
+
 export interface ConciergeReply {
   reply: string;
   done: boolean;
@@ -155,6 +164,7 @@ export class ConciergeService {
     messages: ConciergeMessage[],
     sessionId: string,
     clientIp: string,
+    applianceToken?: string,
   ): Promise<ConciergeReply> {
 
     // ── Rate limit ──────────────────────────────────────────────────────────
@@ -189,6 +199,30 @@ export class ConciergeService {
       return { reply: "Booking is not currently available online. Please call us to enquire.", done: true };
     }
 
+    // ── Optional: load appliance context from QR token ─────────────────────
+    let applianceContext: ApplianceContext | null = null;
+    if (applianceToken) {
+      const appliance = await this.prisma.client.appliance.findUnique({
+        where: { public_token: applianceToken },
+        include: {
+          customer: {
+            select: { name: true, phone: true, address_line1: true, postcode: true },
+          },
+        },
+      });
+      // Guard: appliance must belong to this company
+      if (appliance && appliance.company_id === company.id && !appliance.archived) {
+        applianceContext = {
+          applianceLabel: [appliance.make, appliance.model].filter(Boolean).join(' ') || appliance.type,
+          location: appliance.location,
+          customerName: appliance.customer.name,
+          customerPhone: appliance.customer.phone,
+          postcode: appliance.customer.postcode,
+          address: appliance.customer.address_line1,
+        };
+      }
+    }
+
     session.messageCount++;
 
     // ── Build system prompt ─────────────────────────────────────────────────
@@ -200,8 +234,18 @@ export class ConciergeService {
     const startH = company.concierge_work_start ?? 8;
     const endH = company.concierge_work_end ?? 17;
 
+    const applianceHint = applianceContext
+      ? `\nAPPLIANCE CONTEXT (from QR scan):
+- This customer scanned the QR code on their ${applianceContext.applianceLabel}${applianceContext.location ? ` in the ${applianceContext.location}` : ''}.
+- Customer: ${applianceContext.customerName}${applianceContext.customerPhone ? `, ${applianceContext.customerPhone}` : ''}
+- Postcode: ${applianceContext.postcode ?? 'unknown'}${applianceContext.address ? `, ${applianceContext.address}` : ''}
+- Default job type: Annual service for this ${applianceContext.applianceLabel}.
+- SKIP asking for their name, phone, and postcode — you already have them. Confirm instead: "Booking a service for ${applianceContext.customerName}'s ${applianceContext.applianceLabel} — is that right?"
+- Still ask for: preferred timing, any access notes or new symptoms.`
+      : '';
+
     const systemPrompt = `You are the booking assistant for ${company.name}, a UK plumbing and heating firm.
-Today is ${dateStr}. You work ${workDays}, ${startH}:00–${endH}:00.
+Today is ${dateStr}. You work ${workDays}, ${startH}:00–${endH}:00.${applianceHint}
 
 Your job:
 1. Warmly greet the customer and find out what they need.
@@ -259,7 +303,7 @@ ${company.concierge_approval_mode ? 'Note: After booking, the team will confirm 
       if (session.booked) {
         toolResult = { error: 'A booking already exists for this session.' };
       } else {
-        const bookingResult = await this.createBooking(company, toolArgs, sessionId);
+        const bookingResult = await this.createBooking(company, toolArgs, sessionId, applianceToken);
         if (bookingResult.success) {
           session.booked = true;
           // Ask model to compose the confirmation message
@@ -374,6 +418,7 @@ ${company.concierge_approval_mode ? 'Note: After booking, the team will confirm 
     },
     args: Record<string, unknown>,
     sessionId: string,
+    applianceToken?: string,
   ): Promise<Record<string, unknown>> {
     const name     = String(args['name'] ?? '').trim();
     const phone    = String(args['phone'] ?? '').trim();
@@ -499,12 +544,16 @@ ${company.concierge_approval_mode ? 'Note: After booking, the team will confirm 
       });
 
       // AutopilotEvent — fire and forget
+      const eventType = applianceToken ? 'APPLIANCE_REBOOKED' : 'CONCIERGE_BOOKED';
+      const eventTitle = applianceToken
+        ? `🔁 ${safeName} booked a service by scanning their boiler (${slotLabel})`
+        : `Concierge booked ${safeName} — ${safeProblem.slice(0, 60)} (${slotLabel})`;
       void this.prisma.client.autopilotEvent.create({
         data: {
           company_id: company.id,
-          type: 'CONCIERGE_BOOKED',
-          title: `Concierge booked ${safeName} — ${safeProblem.slice(0, 60)} (${slotLabel})`,
-          meta: { jobId: result.job.id, urgency, slot: slotLabel, approvalRequired: company.concierge_approval_mode },
+          type: eventType,
+          title: eventTitle,
+          meta: { jobId: result.job.id, urgency, slot: slotLabel, approvalRequired: company.concierge_approval_mode, applianceToken: applianceToken ?? null },
         },
       }).catch(() => {});
 

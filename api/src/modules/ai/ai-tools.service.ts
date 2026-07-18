@@ -633,6 +633,19 @@ Do NOT use prepare_form for:
           },
         },
       },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_appliances_due',
+          description: 'Get a list of boilers and appliances due for a service in the next N days. Use when the owner asks about upcoming services, boilers due, repeat work, or appliance service schedule.',
+          parameters: {
+            type: 'object',
+            properties: {
+              days: { type: 'number', description: 'Number of days to look ahead (default 60)' },
+            },
+          },
+        },
+      },
     ];
   }
 
@@ -798,6 +811,7 @@ Do NOT use prepare_form for:
       case 'get_end_of_day_summary':   return this.executeGetEndOfDaySummary(companyId, _userId);
       case 'get_safety_checklist':     return this.executeGetSafetyChecklist(a);
       case 'get_photo_guidance':       return this.executeGetPhotoGuidance(a);
+      case 'get_appliances_due':       return this.executeGetAppliancesDue(companyId, a);
 
       default:
         return { error: true, message: `Unknown tool: ${toolName}` };
@@ -4102,6 +4116,47 @@ ${signature}`,
       message: `The ${label} accountant pack is ready. [Download it here](${url}) — it includes invoices CSV, payments CSV, purchase orders CSV, CIS statements (if applicable), and a summary PDF.`,
       url,
       month,
+    };
+  }
+
+  private async executeGetAppliancesDue(companyId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const days = typeof args.days === 'number' ? args.days : 60;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + days);
+
+    const appliances = await this.prisma.client.appliance.findMany({
+      where: {
+        company_id: companyId,
+        archived: false,
+        next_service_due: { lte: cutoff },
+      },
+      include: { customer: { select: { name: true, phone: true } } },
+      orderBy: { next_service_due: 'asc' },
+    });
+
+    if (!appliances.length) {
+      return { message: `No appliances due for service in the next ${days} days.`, count: 0, appliances: [] };
+    }
+
+    const now = new Date();
+    const list = appliances.map(a => ({
+      customer: a.customer.name,
+      phone: a.customer.phone ?? 'no phone',
+      appliance: [a.make, a.model].filter(Boolean).join(' ') || a.type,
+      location: a.location ?? '',
+      due: a.next_service_due
+        ? new Date(a.next_service_due).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        : 'date unknown',
+      overdue: a.next_service_due ? a.next_service_due < now : false,
+    }));
+
+    const overdue = list.filter(l => l.overdue).length;
+    const upcoming = list.length - overdue;
+
+    return {
+      message: `${list.length} appliance${list.length === 1 ? '' : 's'} due for service in the next ${days} days — ${overdue} overdue, ${upcoming} upcoming. That's repeat work waiting to be booked in.`,
+      count: list.length,
+      appliances: list,
     };
   }
 }

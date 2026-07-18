@@ -10,9 +10,10 @@ import { StorageModule } from '../../storage/storage.module';
 import { RecurringJobsModule } from '../recurring-jobs/recurring-jobs.module';
 import { InvoicesModule } from '../invoices/invoices.module';
 import { CommsModule } from '../comms/comms.module';
+import { AppliancesModule } from '../appliances/appliances.module';
 
 @Module({
-  imports:     [StorageModule, RecurringJobsModule, InvoicesModule, CommsModule],
+  imports:     [StorageModule, RecurringJobsModule, InvoicesModule, CommsModule, AppliancesModule],
   controllers: [JobsController],
   providers:   [JobsService, JobPhotosService, JobNotificationsService, JobStagesService, JobTemplatesService, OnMyWayService],
   exports:     [JobNotificationsService, JobsService],

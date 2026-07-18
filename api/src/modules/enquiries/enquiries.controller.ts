@@ -40,6 +40,7 @@ class ConciergeMessageDto {
 class ConciergeChatDto {
   @IsArray() @ValidateNested({ each: true }) @Type(() => ConciergeMessageDto) @ArrayMaxSize(40) messages!: ConciergeMessageDto[];
   @IsString() sessionId!: string;
+  @IsOptional() @IsString() applianceToken?: string;
 }
 
 @Controller('enquiries')
@@ -58,7 +59,7 @@ export class EnquiriesController {
     @Body() dto: ConciergeChatDto,
     @Ip() ip: string,
   ) {
-    return this.conciergeService.chat(slug, dto.messages, dto.sessionId, ip ?? '');
+    return this.conciergeService.chat(slug, dto.messages, dto.sessionId, ip ?? '', dto.applianceToken);
   }
 
   @Post('intake/:slug')

@@ -404,6 +404,7 @@ model Company {
   quoteChaseActivities QuoteChaseActivity[]
   renewalPolicy        RenewalPolicy?
   renewalReminders     RenewalReminder[]
+  appliances           Appliance[]
 }
 
 model Customer {
@@ -436,6 +437,7 @@ model Customer {
   chaseActivities      ChaseActivity[]
   quoteChaseActivities QuoteChaseActivity[]
   renewalReminders     RenewalReminder[]
+  appliances           Appliance[]
 }
 
 model Job {
@@ -451,15 +453,17 @@ model Job {
   schedule_note    String?
   notes            String?
   recurring_job_id   String?
+  appliance_id       String?
   reminder_sent_at   DateTime?
   on_my_way_sent_at  DateTime?
   created_at         DateTime  @default(now())
-  updated_at       DateTime  @updatedAt
+  updated_at         DateTime  @updatedAt
 
   company               Company                @relation(fields: [company_id], references: [id])
   customer              Customer               @relation(fields: [customer_id], references: [id])
   engineer              User?                  @relation("EngineerJobs", fields: [engineer_id], references: [id])
   recurringJob          RecurringJob?          @relation(fields: [recurring_job_id], references: [id], onDelete: SetNull)
+  appliance             Appliance?             @relation(fields: [appliance_id], references: [id])
   quotes                Quote[]
   invoices              Invoice[]
   subcontractorPayments SubcontractorPayment[]
@@ -876,6 +880,9 @@ model GasSafetyCertificate {
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  appliance_id String?
+  appliance    Appliance?        @relation(fields: [appliance_id], references: [id])
 
   company          Company           @relation(fields: [company_id], references: [id])
   job              Job?              @relation(fields: [job_id], references: [id])
@@ -1482,8 +1489,10 @@ model RenewalReminder {
   id             String               @id @default(cuid())
   company_id     String
   company        Company              @relation(fields: [company_id], references: [id])
-  certificate_id String
-  certificate    GasSafetyCertificate @relation(fields: [certificate_id], references: [id])
+  certificate_id String?
+  certificate    GasSafetyCertificate? @relation(fields: [certificate_id], references: [id])
+  appliance_id   String?
+  appliance      Appliance?           @relation(fields: [appliance_id], references: [id])
   customer_id    String?
   customer       Customer?            @relation(fields: [customer_id], references: [id])
 
@@ -1494,4 +1503,48 @@ model RenewalReminder {
 
   @@index([company_id, created_at])
   @@index([certificate_id])
+}
+
+// ─── Boiler QR Passport — Asset Records ──────────────────────────────────────
+
+model Appliance {
+  id         String  @id @default(cuid())
+  company_id String
+  company    Company @relation(fields: [company_id], references: [id])
+  customer_id String
+  customer   Customer @relation(fields: [customer_id], references: [id])
+
+  // Identity
+  type          String  @default("BOILER") // BOILER | CYLINDER | FIRE | COOKER | OTHER
+  make          String?
+  model         String?
+  gc_number     String? // Gas Council number
+  serial_number String?
+  location      String? // "kitchen", "airing cupboard"
+
+  // Lifecycle
+  installed_date  DateTime?
+  install_job_id  String?
+
+  // Service scheduling
+  last_service_date DateTime?
+  next_service_due  DateTime?
+  warranty_expiry   DateTime?
+
+  // Public QR token (unguessable)
+  public_token String @unique @default(cuid())
+
+  notes    String?
+  archived Boolean  @default(false)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  gasCertificates  GasSafetyCertificate[]
+  jobs             Job[]
+  renewalReminders RenewalReminder[]
+
+  @@index([company_id, customer_id])
+  @@index([public_token])
+  @@index([company_id, next_service_due])
 }
