@@ -327,6 +327,14 @@ model Company {
   // Automations — F5 On My Way customer notifications
   customer_notifications_enabled Boolean @default(true)
 
+  // F6 AI Enquiry Concierge
+  concierge_enabled       Boolean @default(false)
+  concierge_approval_mode Boolean @default(true)   // true = requires owner to confirm; false = auto-books
+  concierge_work_days     String  @default("Mon,Tue,Wed,Thu,Fri")
+  concierge_work_start    Int     @default(8)       // UK hour
+  concierge_work_end      Int     @default(17)      // UK hour
+  concierge_auto_assign   Boolean @default(false)   // auto-assign sole engineer
+
   // Onboarding
   onboarding_dismissed Boolean @default(false)
   first_import_done    Boolean @default(false)

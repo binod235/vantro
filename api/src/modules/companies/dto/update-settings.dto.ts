@@ -106,4 +106,12 @@ export class UpdateSettingsDto {
   @IsOptional() @IsString() @MaxLength(500) google_review_url?: string | null;
   @IsOptional() @IsBoolean() review_requests_enabled?: boolean;
   @IsOptional() @IsBoolean() customer_notifications_enabled?: boolean;
+
+  // Concierge
+  @IsOptional() @IsBoolean() concierge_enabled?: boolean;
+  @IsOptional() @IsBoolean() concierge_approval_mode?: boolean;
+  @IsOptional() @IsString() @MaxLength(100) concierge_work_days?: string;
+  @IsOptional() @IsInt() @Min(0) @Max(23) concierge_work_start?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(23) concierge_work_end?: number;
+  @IsOptional() @IsBoolean() concierge_auto_assign?: boolean;
 }

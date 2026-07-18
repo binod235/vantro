@@ -6,6 +6,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  Ip,
   NotFoundException,
   Param,
   Patch,
@@ -14,8 +15,11 @@ import {
   Req,
 } from '@nestjs/common';
 import { EnquiryStatus } from '@prisma/client';
+import { IsArray, IsString, ValidateNested, ArrayMaxSize, IsOptional } from 'class-validator';
+import { Type } from 'class-transformer';
 import { Webhook } from 'svix';
 import { EnquiriesService } from './enquiries.service';
+import { ConciergeService } from './concierge.service';
 import { CreateEnquiryDto } from './dto/create-enquiry.dto';
 import { UpdateEnquiryDto } from './dto/update-enquiry.dto';
 import { UpdateEnquiryStatusDto } from './dto/update-status.dto';
@@ -28,9 +32,34 @@ import {
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 
+class ConciergeMessageDto {
+  @IsString() role!: 'user' | 'assistant';
+  @IsString() content!: string;
+}
+
+class ConciergeChatDto {
+  @IsArray() @ValidateNested({ each: true }) @Type(() => ConciergeMessageDto) @ArrayMaxSize(40) messages!: ConciergeMessageDto[];
+  @IsString() sessionId!: string;
+}
+
 @Controller('enquiries')
 export class EnquiriesController {
-  constructor(private readonly enquiriesService: EnquiriesService) {}
+  constructor(
+    private readonly enquiriesService: EnquiriesService,
+    private readonly conciergeService: ConciergeService,
+  ) {}
+
+  // ─── Concierge chat (public) — BEFORE :id routes ─────────────────────────
+  @Post('concierge/:slug')
+  @Public()
+  @HttpCode(200)
+  async conciergeChat(
+    @Param('slug') slug: string,
+    @Body() dto: ConciergeChatDto,
+    @Ip() ip: string,
+  ) {
+    return this.conciergeService.chat(slug, dto.messages, dto.sessionId, ip ?? '');
+  }
 
   @Post('intake/:slug')
   @Public()
